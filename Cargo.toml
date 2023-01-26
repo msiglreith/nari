@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "nari-freetype",
     "nari-gpu",
     "nari-ochre",
 ]
