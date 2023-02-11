@@ -4,4 +4,7 @@ members = [
     "nari-freetype",
     "nari-gpu",
     "nari-ochre",
+    "nari-canvas",
+    "nari-platform",
+    "nari-studio",
 ]

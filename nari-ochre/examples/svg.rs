@@ -163,7 +163,7 @@ fn main() {
         )
         .unwrap();
 
-        // nami
+        // nari
         rasterizer.begin();
         (&path_flat).copy_to(&mut rasterizer);
         let range = rasterizer.range();
@@ -171,7 +171,7 @@ fn main() {
         rasterizer.end(&mut encoder);
 
         image::save_buffer(
-            &format!("{}.nami_{}.png", file_path, i),
+            &format!("{}.nari_{}.png", file_path, i),
             &encoder.image,
             (range.right - range.left) as u32 * TILE_SIZE as u32,
             (range.bottom - range.top) as u32 * TILE_SIZE as u32,

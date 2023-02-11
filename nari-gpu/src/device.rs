@@ -471,7 +471,8 @@ impl Gpu {
                         requirements: self.get_buffer_memory_requirements(buffer),
                         location: gpu_allocator::MemoryLocation::CpuToGpu,
                         linear: true,
-                        allocation_scheme: gpu_allocator::vulkan::AllocationScheme::GpuAllocatorManaged,
+                        allocation_scheme:
+                            gpu_allocator::vulkan::AllocationScheme::GpuAllocatorManaged,
                     };
                     let mut allocation = self.allocator.allocate(&alloc_desc)?;
                     {
@@ -552,7 +553,8 @@ impl Gpu {
                         requirements: self.get_buffer_memory_requirements(buffer),
                         location: gpu_allocator::MemoryLocation::CpuToGpu,
                         linear: true,
-                        allocation_scheme: gpu_allocator::vulkan::AllocationScheme::GpuAllocatorManaged,
+                        allocation_scheme:
+                            gpu_allocator::vulkan::AllocationScheme::GpuAllocatorManaged,
                     };
                     let mut allocation = self.allocator.allocate(&alloc_desc)?;
                     {

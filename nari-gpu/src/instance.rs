@@ -30,7 +30,8 @@ impl Instance {
                 .any(|ext| CStr::from_ptr(ext.extension_name.as_ptr()) == extension)
         };
 
-        let surface_extensions = ash_window::enumerate_required_extensions(window.raw_display_handle())?;
+        let surface_extensions =
+            ash_window::enumerate_required_extensions(window.raw_display_handle())?;
         let mut extensions = surface_extensions.to_vec();
 
         let supports_debug_utils = supports_extension(ext::DebugUtils::name());
@@ -44,7 +45,13 @@ impl Instance {
             .enabled_extension_names(&extensions);
         let instance = entry.create_instance(&instance_desc, None)?;
 
-        let surface = ash_window::create_surface(&entry, &instance, window.raw_display_handle(), window.raw_window_handle(), None)?;
+        let surface = ash_window::create_surface(
+            &entry,
+            &instance,
+            window.raw_display_handle(),
+            window.raw_window_handle(),
+            None,
+        )?;
         let surface_fn = khr::Surface::new(&entry, &instance);
 
         let (physical_device, device_id, family_index, _family_properties) = instance

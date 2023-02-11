@@ -1,0 +1,17 @@
+[package]
+name = "nari-studio"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+nari-gpu = { path = "../nari-gpu" }
+nari-canvas = { path = "../nari-canvas" }
+
+unicode-segmentation = "1.9"
+
+anyhow = "1"
+winit = { path = "../../winit" } # "0.27.5"
+
+windows-sys = { version = "0.42", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
