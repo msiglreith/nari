@@ -1,17 +1,30 @@
-use std::{cell::{Cell, RefCell}, ffi::OsStr, iter::once, os::windows::ffi::OsStrExt, ptr, rc::Rc};
+use gpu::vk;
+use nari_gpu as gpu;
+use raw_window_handle::{
+    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle, Win32WindowHandle,
+    WindowsDisplayHandle,
+};
+use std::{
+    cell::{Cell, RefCell},
+    ffi::OsStr,
+    iter::once,
+    mem::MaybeUninit,
+    os::windows::ffi::OsStrExt,
+    ptr,
+    rc::Rc,
+};
 use windows_sys::Win32::{
-    Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM, ERROR_WMI_SET_FAILURE},
+    Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
+    Graphics::Gdi::{RedrawWindow, ValidateRect, RDW_INTERNALPAINT},
     System::SystemServices::IMAGE_DOS_HEADER,
     UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, RegisterClassExW,
-        SetWindowLongPtrW, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT,
-        SW_SHOW, WM_QUIT, WNDCLASSEXW, WS_EX_APPWINDOW, WS_OVERLAPPEDWINDOW, GWL_USERDATA,
-        GetWindowLongPtrW, WM_DESTROY, WM_CREATE, CREATESTRUCTW, WM_PAINT, IDC_ARROW, LoadCursorW, WM_SETCURSOR,
-        HTCLIENT, SetCursor,
+        CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
+        GetWindowLongPtrW, LoadCursorW, RegisterClassExW, SetWindowLongPtrW, ShowWindow,
+        TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_USERDATA,
+        HTCLIENT, IDC_ARROW, SW_SHOW, WM_CREATE, WM_DESTROY, WM_PAINT, WM_SETCURSOR,
+        WM_SIZE, WNDCLASSEXW, WS_EX_APPWINDOW, WS_OVERLAPPEDWINDOW,
     },
-    Graphics::Gdi::{RedrawWindow, ValidateRect, RDW_INTERNALPAINT},
 };
-use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle, WindowsDisplayHandle, Win32WindowHandle};
 
 fn encode_wide(string: impl AsRef<OsStr>) -> Vec<u16> {
     string.as_ref().encode_wide().chain(once(0)).collect()
@@ -41,7 +54,7 @@ unsafe extern "system" fn window_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     let event_loop = {
-        let ptr = GetWindowLongPtrW(window,GWL_USERDATA) as *mut Rc<EventLoop>;
+        let ptr = GetWindowLongPtrW(window, GWL_USERDATA) as *mut EventLoop;
         if ptr.is_null() {
             return match msg {
                 WM_CREATE => {
@@ -56,24 +69,23 @@ unsafe extern "system" fn window_proc(
         &mut *ptr
     };
 
-    // trigger redraw on events
-    if msg != WM_PAINT {
-        RedrawWindow(
-            window,
-            ptr::null(),
-            0,
-            RDW_INTERNALPAINT,
-        );
-    }
-
     match msg {
         WM_PAINT => {
             event_loop.send(Event::Paint);
             ValidateRect(window, ptr::null());
+
+            0
+        }
+        WM_SIZE => {
+            let width = loword(lparam as u32) as u32;
+            let height = hiword(lparam as u32) as u32;
+            event_loop.send(Event::Resize(Extent { width, height }));
+
             0
         }
         WM_DESTROY => {
             event_loop.control_flow.set(ControlFlow::Exit);
+
             0
         }
         _ => DefWindowProcW(window, msg, wparam, lparam),
@@ -88,6 +100,7 @@ enum ControlFlow {
 
 enum Event {
     Paint,
+    Resize(Extent),
 }
 
 struct EventLoop {
@@ -97,9 +110,15 @@ struct EventLoop {
 
 impl EventLoop {
     fn send(&self, event: Event) {
-        let control_flow = (self.event_callback.borrow_mut())(event);
+        let mut callback = self.event_callback.borrow_mut();
+        let control_flow = callback(event);
         self.control_flow.set(control_flow);
     }
+}
+
+pub struct Extent {
+    pub width: u32,
+    pub height: u32,
 }
 
 struct Platform {
@@ -109,9 +128,9 @@ struct Platform {
 
 impl Platform {
     pub fn new() -> Self {
-        let mut event_loop = Rc::new(EventLoop {
+        let event_loop = Rc::new(EventLoop {
             control_flow: Cell::new(ControlFlow::Continue),
-            event_callback: RefCell::new(Box::new(|_| ControlFlow::Exit)),
+            event_callback: RefCell::new(Box::new(|_| ControlFlow::Continue)),
         });
 
         unsafe {
@@ -137,7 +156,7 @@ impl Platform {
             let style = WS_OVERLAPPEDWINDOW;
             let style_ex = WS_EX_APPWINDOW;
 
-            let mut user_data = event_loop.clone();
+            let userdata = event_loop.clone();
 
             let hwnd = CreateWindowExW(
                 style_ex,
@@ -151,15 +170,24 @@ impl Platform {
                 0,
                 0,
                 hinstance,
-                &mut user_data as *const _ as _,
+                Rc::as_ptr(&userdata) as _,
             );
 
             ShowWindow(hwnd, SW_SHOW);
 
-            Platform {
-                hwnd,
-                event_loop,
-            }
+            Platform { hwnd, event_loop }
+        }
+    }
+
+    pub fn surface_size(&self) -> Extent {
+        let mut rect = MaybeUninit::uninit();
+        unsafe {
+            GetClientRect(self.hwnd, rect.as_mut_ptr());
+        }
+        let rect = unsafe { rect.assume_init() };
+        Extent {
+            width: (rect.right - rect.left) as u32,
+            height: (rect.bottom - rect.top) as u32,
         }
     }
 
@@ -186,28 +214,141 @@ impl Platform {
     }
 }
 
-impl HasRawDisplayHandle for Platform {
+unsafe impl HasRawDisplayHandle for Platform {
     fn raw_display_handle(&self) -> RawDisplayHandle {
-        RawDisplayHandle::Windows(WindowsDisplayHandle)
+        RawDisplayHandle::Windows(WindowsDisplayHandle::empty())
     }
 }
 
-impl HasRawWindowHandle for Platform {
+unsafe impl HasRawWindowHandle for Platform {
     fn raw_window_handle(&self) -> RawWindowHandle {
-        RawWindowHandle::Win32(Win32WindowHandle {
-            hwnd: self.hwnd,
-            hinstance: get_instance_handle(),
-        })
+        let mut handle = Win32WindowHandle::empty();
+        handle.hwnd = self.hwnd as _;
+        handle.hinstance = get_instance_handle() as _;
+
+        RawWindowHandle::Win32(handle)
     }
 }
 
-fn main() {
-    let platform = Platform::new();
-    platform.run(|event| {
-        match event {
-            Event::Paint => println!("paint"),
-        }
+fn main() -> anyhow::Result<()> {
+    unsafe {
+        let platform = Platform::new();
+        let instance = gpu::Instance::new(&platform)?;
+        let mut gpu = gpu::Gpu::new(&instance, std::path::Path::new(""))?;
 
-        ControlFlow::Continue
-    })
+        let mut size = platform.surface_size();
+        let mut wsi = gpu::Swapchain::new(
+            &instance,
+            &gpu,
+            size.width,
+            size.height,
+            vk::PresentModeKHR::IMMEDIATE,
+        )?;
+
+        platform.run(move |event| {
+            match event {
+                Event::Resize(extent) => {
+                    size = extent;
+                    wsi.resize(&gpu, size.width, size.height).unwrap();
+                }
+                Event::Paint => {
+                    let frame = wsi.acquire().unwrap();
+                    let pool = gpu.acquire_pool().unwrap();
+
+                    gpu.cmd_barriers(
+                        pool,
+                        &[],
+                        &[gpu::ImageBarrier {
+                            image: wsi.frame_images[frame.id].aspect(vk::ImageAspectFlags::COLOR),
+                            src: gpu::ImageAccess {
+                                access: gpu::Access::NONE,
+                                stage: gpu::Stage::NONE,
+                                layout: gpu::ImageLayout::UNDEFINED,
+                            },
+                            dst: gpu::ImageAccess {
+                                access: gpu::Access::COLOR_ATTACHMENT_WRITE,
+                                stage: gpu::Stage::COLOR_ATTACHMENT_OUTPUT,
+                                layout: gpu::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                            },
+                        }],
+                    );
+
+                    let area = vk::Rect2D {
+                        offset: vk::Offset2D { x: 0, y: 0 },
+                        extent: vk::Extent2D {
+                            width: size.width,
+                            height: size.height,
+                        },
+                    };
+                    gpu.cmd_set_viewport(
+                        pool.cmd_buffer,
+                        0,
+                        &[vk::Viewport {
+                            x: 0.0,
+                            y: 0.0,
+                            width: size.width as _,
+                            height: size.height as _,
+                            min_depth: 0.0,
+                            max_depth: 1.0,
+                        }],
+                    );
+                    gpu.cmd_set_scissor(pool.cmd_buffer, 0, &[area]);
+                    gpu.cmd_graphics_begin(
+                        pool,
+                        area,
+                        &[gpu::GraphicsAttachment {
+                            image_view: wsi.frame_rtvs[frame.id],
+                            layout: gpu::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                            load: vk::AttachmentLoadOp::CLEAR,
+                            store: vk::AttachmentStoreOp::STORE,
+                            clear: vk::ClearValue {
+                                color: vk::ClearColorValue { float32: [0.2; 4] },
+                            },
+                        }],
+                    );
+
+                    gpu.cmd_graphics_end(pool);
+
+                    gpu.cmd_barriers(
+                        pool,
+                        &[],
+                        &[gpu::ImageBarrier {
+                            image: wsi.frame_images[frame.id].aspect(vk::ImageAspectFlags::COLOR),
+                            src: gpu::ImageAccess {
+                                access: gpu::Access::COLOR_ATTACHMENT_WRITE,
+                                stage: gpu::Stage::COLOR_ATTACHMENT_OUTPUT,
+                                layout: gpu::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                            },
+                            dst: gpu::ImageAccess {
+                                access: gpu::Access::NONE,
+                                stage: gpu::Stage::NONE,
+                                layout: gpu::ImageLayout::PRESENT_SRC_KHR,
+                            },
+                        }],
+                    );
+
+                    gpu.submit_pool(
+                        pool,
+                        gpu::Submit {
+                            waits: &[gpu::SemaphoreSubmit {
+                                semaphore: frame.acquire,
+                                stage: gpu::Stage::COLOR_ATTACHMENT_OUTPUT,
+                            }],
+                            signals: &[gpu::SemaphoreSubmit {
+                                semaphore: frame.present,
+                                stage: gpu::Stage::COLOR_ATTACHMENT_OUTPUT,
+                            }],
+                        },
+                    )
+                    .unwrap();
+
+                    wsi.present(&gpu, frame).unwrap();
+                }
+            }
+
+            ControlFlow::Continue
+        });
+
+        Ok(())
+    }
 }

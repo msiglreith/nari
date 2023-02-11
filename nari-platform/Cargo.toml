@@ -17,3 +17,7 @@ features = [
     "Win32_System_SystemServices",
     "Win32_UI_WindowsAndMessaging",
 ]
+
+[dev-dependencies]
+nari-gpu = { path = "../nari-gpu" }
+anyhow = "1"
