@@ -13,17 +13,18 @@ use std::{
 };
 use windows_sys::Win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM},
-    Graphics::Gdi::{ScreenToClient, ValidateRect},
+    Graphics::Gdi::{ScreenToClient, ValidateRect, RedrawWindow, RDW_INTERNALPAINT},
     System::SystemServices::IMAGE_DOS_HEADER,
-    UI::WindowsAndMessaging::{
+    UI::{Controls::WM_MOUSELEAVE, WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
         GetWindowLongPtrW, LoadCursorW, RegisterClassExW, SetWindowLongPtrW, ShowWindow,
         TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_USERDATA,
         HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTRIGHT, HTTOP,
         HTTOPLEFT, HTTOPRIGHT, IDC_ARROW, NCCALCSIZE_PARAMS, SW_SHOW, WM_CREATE, WM_DESTROY,
-        WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_PAINT, WM_SIZE, WNDCLASSEXW, WS_EX_APPWINDOW,
-        WS_SYSMENU, WS_CAPTION
-    },
+        WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_NCMOUSEMOVE, WM_PAINT, WM_SIZE,
+        WNDCLASSEXW, WS_CAPTION, WS_EX_ACCEPTFILES, WS_EX_APPWINDOW, WS_EX_WINDOWEDGE,
+        WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_SIZEBOX, WS_SYSMENU, WM_NCMOUSELEAVE,
+    }},
 };
 
 fn encode_wide(string: impl AsRef<OsStr>) -> Vec<u16> {
@@ -59,11 +60,15 @@ unsafe extern "system" fn window_proc(
         WM_NCCREATE => println!("WM_NCCREATE"),
         WM_NCCALCSIZE => println!("WM_NCCALCSIZE"),
         WM_CREATE => println!("WM_CREATE"),
+        WM_MOUSEMOVE => println!("WM_MOUSEMOVE"),
+        WM_NCMOUSEMOVE => println!("WM_NCMOUSEMOVE"),
+        WM_MOUSELEAVE => println!("WM_MOUSELEAVE"),
+        WM_NCMOUSELEAVE => println!("WM_NCMOUSELEAVE"),
         _ => println!("{}", msg),
     }
 
-    let event_loop = {
-        let ptr = GetWindowLongPtrW(window, GWL_USERDATA) as *mut EventLoop;
+    let user_data = {
+        let ptr = GetWindowLongPtrW(window, GWL_USERDATA) as *mut UserData;
         if ptr.is_null() {
             return match msg {
                 WM_NCCREATE => {
@@ -85,8 +90,8 @@ unsafe extern "system" fn window_proc(
             }
 
             let params = &mut *(lparam as *mut NCCALCSIZE_PARAMS);
-            params.rgrc[0].top += 1;
-            params.rgrc[0].bottom += 1;
+            params.rgrc[0].top -= 1;
+            params.rgrc[0].bottom -= 1;
 
             0
         }
@@ -99,7 +104,7 @@ unsafe extern "system" fn window_proc(
             ScreenToClient(window, &mut point);
 
             let mut area = SurfaceArea::Client;
-            event_loop.send(
+            user_data.send(
                 surface,
                 Event::Hittest {
                     x: point.x,
@@ -124,8 +129,35 @@ unsafe extern "system" fn window_proc(
             wm_area as LRESULT
         }
 
+        WM_MOUSEMOVE => {
+            let x = loword(lparam as u32) as i16 as i32;
+            let y = hiword(lparam as u32) as i16 as i32;
+
+            user_data.mouse_position.set(Some((x, y)));
+            surface.redraw();
+
+            0
+        }
+        WM_NCMOUSEMOVE => {
+            if wparam == HTCAPTION as usize {
+                let x = loword(lparam as u32) as i16 as i32;
+                let y = hiword(lparam as u32) as i16 as i32;
+
+                let mut pt = POINT { x, y };
+                ScreenToClient(window, &mut pt);
+                user_data.mouse_position.set(Some((pt.x, pt.y)));
+            } else {
+                // handled by system, considered out of user area
+                user_data.mouse_position.set(None);
+            }
+
+            surface.redraw();
+
+            0
+        }
+
         WM_PAINT => {
-            event_loop.send(surface, Event::Paint);
+            user_data.send(surface, Event::Paint);
             ValidateRect(window, ptr::null());
 
             0
@@ -133,12 +165,13 @@ unsafe extern "system" fn window_proc(
         WM_SIZE => {
             let width = loword(lparam as u32) as u32;
             let height = hiword(lparam as u32) as u32;
-            event_loop.send(surface, Event::Resize(Extent { width, height }));
+            user_data.send(surface, Event::Resize(Extent { width, height }));
+            surface.redraw();
 
             0
         }
         WM_DESTROY => {
-            event_loop.control_flow.set(ControlFlow::Exit);
+            user_data.control_flow.set(ControlFlow::Exit);
 
             0
         }
@@ -175,17 +208,27 @@ pub enum Event<'a> {
     },
 }
 
-struct EventLoop {
+struct UserData {
     control_flow: Cell<ControlFlow>,
-    event_callback: RefCell<Box<dyn FnMut(Surface, Event) -> ControlFlow>>,
+    event_callback: RefCell<Box<dyn FnMut(EventLoop, Event) -> ControlFlow>>,
+    mouse_position: Cell<Option<(i32, i32)>>,
 }
 
-impl EventLoop {
+impl UserData {
     fn send(&self, surface: Surface, event: Event) {
+        let event_loop = EventLoop {
+            surface,
+            mouse_position: self.mouse_position.get(),
+        };
         let mut callback = self.event_callback.borrow_mut();
-        let control_flow = callback(surface, event);
+        let control_flow = callback(event_loop, event);
         self.control_flow.set(control_flow);
     }
+}
+
+pub struct EventLoop {
+    pub surface: Surface,
+    pub mouse_position: Option<(i32, i32)>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -194,6 +237,7 @@ pub struct Extent {
     pub height: u32,
 }
 
+#[derive(Copy, Clone)]
 pub struct Surface {
     hwnd: HWND,
 }
@@ -216,17 +260,22 @@ impl Surface {
             height: (rect.bottom - rect.top) as u32,
         }
     }
+
+    fn redraw(&self) {
+        unsafe { RedrawWindow(self.hwnd, ptr::null(), 0, RDW_INTERNALPAINT); }
+    }
 }
 pub struct Platform {
     pub surface: Surface,
-    event_loop: Rc<EventLoop>,
+    user_data: Rc<UserData>,
 }
 
 impl Platform {
     pub fn new() -> Self {
-        let event_loop = Rc::new(EventLoop {
+        let user_data = Rc::new(UserData {
             control_flow: Cell::new(ControlFlow::Continue),
             event_callback: RefCell::new(Box::new(|_, _| ControlFlow::Continue)),
+            mouse_position: Cell::new(None),
         });
 
         unsafe {
@@ -248,17 +297,13 @@ impl Platform {
             };
             RegisterClassExW(&class);
 
-            use windows_sys::Win32::UI::WindowsAndMessaging::WS_EX_ACCEPTFILES;
-            use windows_sys::Win32::UI::WindowsAndMessaging::WS_EX_WINDOWEDGE;
-            use windows_sys::Win32::UI::WindowsAndMessaging::{WS_MINIMIZEBOX, WS_SIZEBOX, WS_MAXIMIZEBOX};
-
             let title = encode_wide("nari");
 
             // style required to support aero behavior
             let style = WS_SYSMENU | WS_SIZEBOX | WS_CAPTION | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
             let style_ex = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE | WS_EX_ACCEPTFILES;
 
-            let userdata = event_loop.clone();
+            let user_data = user_data.clone();
 
             let hwnd = CreateWindowExW(
                 style_ex,
@@ -272,23 +317,23 @@ impl Platform {
                 0,
                 0,
                 hinstance,
-                Rc::as_ptr(&userdata) as _,
+                Rc::as_ptr(&user_data) as _,
             );
 
             Platform {
                 surface: Surface { hwnd },
-                event_loop,
+                user_data,
             }
         }
     }
 
-    pub fn run<F: FnMut(Surface, Event) -> ControlFlow + 'static>(self, callback: F) {
+    pub fn run<F: FnMut(EventLoop, Event) -> ControlFlow + 'static>(self, callback: F) {
         use windows_sys::Win32::UI::WindowsAndMessaging::{
             SetWindowPos, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOREPOSITION,
             SWP_NOSIZE, SWP_NOZORDER,
         };
 
-        let _ = self.event_loop.event_callback.replace(Box::new(callback));
+        let _ = self.user_data.event_callback.replace(Box::new(callback));
 
         // force recalc to trigger WM_NCCALCSIZE otherwise the frame will be still seen
         unsafe {
@@ -323,7 +368,7 @@ impl Platform {
                     break 'main;
                 }
 
-                if let ControlFlow::Exit = self.event_loop.control_flow.get() {
+                if let ControlFlow::Exit = self.user_data.control_flow.get() {
                     break 'main;
                 }
             }
