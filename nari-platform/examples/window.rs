@@ -1,6 +1,6 @@
-use nari_gpu as gpu;
-use nari_platform::{Extent, ControlFlow, Event, Platform, SurfaceArea};
 use nari_canvas as canvas;
+use nari_gpu as gpu;
+use nari_platform::{ControlFlow, Event, Extent, Platform, SurfaceArea};
 use std::collections::VecDeque;
 
 const MARGIN: i32 = 5;

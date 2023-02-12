@@ -13,18 +13,22 @@ use std::{
 };
 use windows_sys::Win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM},
-    Graphics::Gdi::{ScreenToClient, ValidateRect, RedrawWindow, RDW_INTERNALPAINT},
+    Graphics::Gdi::{RedrawWindow, ScreenToClient, ValidateRect, RDW_INTERNALPAINT},
     System::SystemServices::IMAGE_DOS_HEADER,
-    UI::{Controls::WM_MOUSELEAVE, WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
-        GetWindowLongPtrW, LoadCursorW, RegisterClassExW, SetWindowLongPtrW, ShowWindow,
-        TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_USERDATA,
-        HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTRIGHT, HTTOP,
-        HTTOPLEFT, HTTOPRIGHT, IDC_ARROW, NCCALCSIZE_PARAMS, SW_SHOW, WM_CREATE, WM_DESTROY,
-        WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_NCMOUSEMOVE, WM_PAINT, WM_SIZE,
-        WNDCLASSEXW, WS_CAPTION, WS_EX_ACCEPTFILES, WS_EX_APPWINDOW, WS_EX_WINDOWEDGE,
-        WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_SIZEBOX, WS_SYSMENU, WM_NCMOUSELEAVE,
-    }},
+    UI::{
+        Controls::WM_MOUSELEAVE,
+        WindowsAndMessaging::{
+            CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
+            GetWindowLongPtrW, LoadCursorW, RegisterClassExW, SetWindowLongPtrW, ShowWindow,
+            TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_USERDATA,
+            HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTRIGHT, HTTOP,
+            HTTOPLEFT, HTTOPRIGHT, IDC_ARROW, NCCALCSIZE_PARAMS, SW_SHOW, WM_CREATE, WM_DESTROY,
+            WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_NCMOUSELEAVE,
+            WM_NCMOUSEMOVE, WM_PAINT, WM_SIZE, WNDCLASSEXW, WS_CAPTION, WS_EX_ACCEPTFILES,
+            WS_EX_APPWINDOW, WS_EX_WINDOWEDGE, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_SIZEBOX,
+            WS_SYSMENU,
+        },
+    },
 };
 
 fn encode_wide(string: impl AsRef<OsStr>) -> Vec<u16> {
@@ -262,7 +266,9 @@ impl Surface {
     }
 
     fn redraw(&self) {
-        unsafe { RedrawWindow(self.hwnd, ptr::null(), 0, RDW_INTERNALPAINT); }
+        unsafe {
+            RedrawWindow(self.hwnd, ptr::null(), 0, RDW_INTERNALPAINT);
+        }
     }
 }
 pub struct Platform {
