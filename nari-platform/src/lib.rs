@@ -19,9 +19,10 @@ use windows_sys::Win32::{
         CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
         GetWindowLongPtrW, LoadCursorW, RegisterClassExW, SetWindowLongPtrW, ShowWindow,
         TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_USERDATA,
-        HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT,
-        HTTOPRIGHT, IDC_ARROW, NCCALCSIZE_PARAMS, SW_SHOW, WM_CREATE, WM_DESTROY, WM_NCCALCSIZE,
-        WM_NCCREATE, WM_NCHITTEST, WM_PAINT, WM_SIZE, WNDCLASSEXW, WS_EX_APPWINDOW, WS_SYSMENU,
+        HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTRIGHT, HTTOP,
+        HTTOPLEFT, HTTOPRIGHT, IDC_ARROW, NCCALCSIZE_PARAMS, SW_SHOW, WM_CREATE, WM_DESTROY,
+        WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_PAINT, WM_SIZE, WNDCLASSEXW, WS_EX_APPWINDOW,
+        WS_SYSMENU, WS_CAPTION
     },
 };
 
@@ -117,6 +118,7 @@ unsafe extern "system" fn window_proc(
                 SurfaceArea::BottomRight => HTBOTTOMRIGHT,
                 SurfaceArea::TopLeft => HTTOPLEFT,
                 SurfaceArea::TopRight => HTTOPRIGHT,
+                SurfaceArea::Caption => HTCAPTION,
             };
 
             wm_area as LRESULT
@@ -160,6 +162,7 @@ pub enum SurfaceArea {
     BottomRight,
     Bottom,
     Top,
+    Caption,
 }
 
 pub enum Event<'a> {
@@ -247,10 +250,12 @@ impl Platform {
 
             use windows_sys::Win32::UI::WindowsAndMessaging::WS_EX_ACCEPTFILES;
             use windows_sys::Win32::UI::WindowsAndMessaging::WS_EX_WINDOWEDGE;
-            use windows_sys::Win32::UI::WindowsAndMessaging::WS_SIZEBOX;
+            use windows_sys::Win32::UI::WindowsAndMessaging::{WS_MINIMIZEBOX, WS_SIZEBOX, WS_MAXIMIZEBOX};
 
             let title = encode_wide("nari");
-            let style = WS_SYSMENU | WS_SIZEBOX;
+
+            // style required to support aero behavior
+            let style = WS_SYSMENU | WS_SIZEBOX | WS_CAPTION | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
             let style_ex = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE | WS_EX_ACCEPTFILES;
 
             let userdata = event_loop.clone();

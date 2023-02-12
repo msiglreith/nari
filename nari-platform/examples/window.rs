@@ -26,6 +26,8 @@ fn main() -> anyhow::Result<()> {
                 }
                 Event::Hittest { x, y, area } => {
                     const MARGIN: i32 = 5;
+                    const CAPTION_HEIGHT: i32 = 29;
+
                     let w = size.width as i32;
                     let h = size.height as i32;
 
@@ -38,6 +40,7 @@ fn main() -> anyhow::Result<()> {
                         _ if y <= MARGIN => SurfaceArea::Top,
                         _ if x >= w - MARGIN => SurfaceArea::Right,
                         _ if y >= h - MARGIN => SurfaceArea::Bottom,
+                        (_, 0..=CAPTION_HEIGHT) => SurfaceArea::Caption,
                         _ => SurfaceArea::Client,
                     };
                 }
