@@ -6,7 +6,7 @@ use std::{
     cell::{Cell, RefCell},
     ffi::OsStr,
     iter::once,
-    mem::MaybeUninit,
+    mem::{self, MaybeUninit},
     os::windows::ffi::OsStrExt,
     ptr,
     rc::Rc,
@@ -16,7 +16,8 @@ use windows_sys::Win32::{
     Graphics::Gdi::{RedrawWindow, ScreenToClient, ValidateRect, RDW_INTERNALPAINT},
     System::SystemServices::IMAGE_DOS_HEADER,
     UI::{
-        Controls::WM_MOUSELEAVE,
+        Controls::{HOVER_DEFAULT, WM_MOUSELEAVE},
+        Input::KeyboardAndMouse::{TrackMouseEvent, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT},
         WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
             GetWindowLongPtrW, LoadCursorW, RegisterClassExW, SetWindowLongPtrW, ShowWindow,
@@ -137,13 +138,30 @@ unsafe extern "system" fn window_proc(
             let x = loword(lparam as u32) as i16 as i32;
             let y = hiword(lparam as u32) as i16 as i32;
 
+            // Track to get `WM_MOUSELEAVE` events
+            TrackMouseEvent(&mut TRACKMOUSEEVENT {
+                cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                dwFlags: TME_LEAVE,
+                hwndTrack: window,
+                dwHoverTime: HOVER_DEFAULT,
+            });
+
             user_data.mouse_position.set(Some((x, y)));
             surface.redraw();
 
             0
         }
+
         WM_NCMOUSEMOVE => {
             if wparam == HTCAPTION as usize {
+                // Track to get `WM_NCMOUSELEAVE` events
+                TrackMouseEvent(&mut TRACKMOUSEEVENT {
+                    cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                    dwFlags: TME_LEAVE | TME_NONCLIENT,
+                    hwndTrack: window,
+                    dwHoverTime: HOVER_DEFAULT,
+                });
+
                 let x = loword(lparam as u32) as i16 as i32;
                 let y = hiword(lparam as u32) as i16 as i32;
 
@@ -155,6 +173,13 @@ unsafe extern "system" fn window_proc(
                 user_data.mouse_position.set(None);
             }
 
+            surface.redraw();
+
+            0
+        }
+
+        WM_MOUSELEAVE | WM_NCMOUSELEAVE => {
+            user_data.mouse_position.set(None);
             surface.redraw();
 
             0
