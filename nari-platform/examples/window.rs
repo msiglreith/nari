@@ -4,13 +4,11 @@ use nari_platform::{ControlFlow, Event, Extent, Platform, SurfaceArea};
 use std::collections::VecDeque;
 
 const MARGIN: i32 = 5;
-const CURSOR: canvas::Color = [0.0, 0.95, 1.0, 1.0];
-const TEXT_DEFAULT: canvas::Color = [1.0, 1.0, 1.0, 1.0];
-const TEXT_SELECT: canvas::Color = [0.15, 0.17, 0.22, 1.0];
 const BACKGROUND: canvas::Color = [0.12, 0.14, 0.17, 1.0];
+const TEXT_DEFAULT: canvas::Color = [1.0, 1.0, 1.0, 1.0];
 
-const CAPTION_HEIGHT: i32 = 29;
-const CLOSE_WIDTH: u32 = 45;
+const CAPTION_HEIGHT: i32 = 28;
+const CLOSE_WIDTH: u32 = 46;
 struct Ui {
     extent: Extent,
     wsi: gpu::Swapchain,
@@ -108,10 +106,10 @@ fn main() -> anyhow::Result<()> {
         let mut size = platform.surface.extent();
 
         let instance = gpu::Instance::new(&platform.surface)?;
-        let mut gpu = gpu::Gpu::new(&instance, std::path::Path::new("assets/shaders"))?;
+        let gpu = gpu::Gpu::new(&instance, std::path::Path::new("assets/shaders"))?;
 
         dbg!(size);
-        let mut wsi = gpu::Swapchain::new(
+        let wsi = gpu::Swapchain::new(
             &instance,
             &gpu,
             size.width,
@@ -134,6 +132,11 @@ fn main() -> anyhow::Result<()> {
             pool: gpu::Pool::null(),
         };
 
+        let codicon = ui
+            .canvas
+            .create_font(std::fs::read("assets/codicon/codicon.ttf")?);
+        let codicon = ui.canvas.create_font_scaled(codicon, 16);
+
         platform.run(move |event_loop, event| {
             match event {
                 Event::Resize(extent) => {
@@ -144,18 +147,47 @@ fn main() -> anyhow::Result<()> {
                     let w = size.width as i32;
                     let h = size.height as i32;
 
+                    let chrome_minimize = canvas::Rect {
+                        x0: size.width.saturating_sub(3 * CLOSE_WIDTH) as _,
+                        x1: size.width.saturating_sub(2 * CLOSE_WIDTH) as _,
+                        y0: 0,
+                        y1: CAPTION_HEIGHT as _,
+                    };
+                    let chrome_maximize = canvas::Rect {
+                        x0: size.width.saturating_sub(2 * CLOSE_WIDTH) as _,
+                        x1: size.width.saturating_sub(CLOSE_WIDTH) as _,
+                        y0: 0,
+                        y1: CAPTION_HEIGHT as _,
+                    };
+                    let chrome_close = canvas::Rect {
+                        x0: size.width.saturating_sub(CLOSE_WIDTH) as _,
+                        x1: size.width as _,
+                        y0: 0,
+                        y1: CAPTION_HEIGHT as _,
+                    };
+
                     *area = match (x, y) {
-                        _ if x <= MARGIN && y <= MARGIN => SurfaceArea::TopLeft,
-                        _ if x >= w - MARGIN && y <= MARGIN => SurfaceArea::TopRight,
-                        _ if x >= w - MARGIN && y >= h - MARGIN => SurfaceArea::BottomRight,
-                        _ if x <= MARGIN && y >= h - MARGIN => SurfaceArea::BottomLeft,
-                        _ if x <= MARGIN => SurfaceArea::Left,
-                        _ if y <= MARGIN => SurfaceArea::Top,
-                        _ if x >= w - MARGIN => SurfaceArea::Right,
-                        _ if y >= h - MARGIN => SurfaceArea::Bottom,
+                        _ if chrome_minimize.hittest(x, y) => SurfaceArea::Minimize,
+                        _ if chrome_maximize.hittest(x, y) => SurfaceArea::Maximize,
+                        _ if chrome_close.hittest(x, y) => SurfaceArea::Close,
                         (_, 0..=CAPTION_HEIGHT) => SurfaceArea::Caption,
                         _ => SurfaceArea::Client,
                     };
+
+                    if !event_loop.surface.is_maximized() {
+                        // resize border
+                        *area = match (x, y) {
+                            _ if x <= MARGIN && y <= MARGIN => SurfaceArea::TopLeft,
+                            _ if x >= w - MARGIN && y <= MARGIN => SurfaceArea::TopRight,
+                            _ if x >= w - MARGIN && y >= h - MARGIN => SurfaceArea::BottomRight,
+                            _ if x <= MARGIN && y >= h - MARGIN => SurfaceArea::BottomLeft,
+                            _ if x <= MARGIN => SurfaceArea::Left,
+                            _ if y <= MARGIN => SurfaceArea::Top,
+                            _ if x >= w - MARGIN => SurfaceArea::Right,
+                            _ if y >= h - MARGIN => SurfaceArea::Bottom,
+                            _ => *area,
+                        };
+                    }
                 }
                 Event::Paint => {
                     let frame = ui.begin_frame();
@@ -188,6 +220,44 @@ fn main() -> anyhow::Result<()> {
                             ui.canvas.rect(chrome_close, [0.9, 0.07, 0.14, 1.0]);
                         }
                     }
+
+                    let icon_minimize = chrome_minimize.center(
+                        ui.canvas
+                            .char_extent(codicon, canvas::Codicon::ChromeMinimize),
+                    );
+                    ui.canvas.glyph(
+                        codicon,
+                        canvas::Codicon::ChromeMinimize,
+                        icon_minimize.x0,
+                        icon_minimize.y0,
+                        TEXT_DEFAULT,
+                    );
+
+                    let maximize_char = if event_loop.surface.is_maximized() {
+                        canvas::Codicon::ChromeRestore
+                    } else {
+                        canvas::Codicon::ChromeMaximize
+                    };
+                    let icon_maximize =
+                        chrome_maximize.center(ui.canvas.char_extent(codicon, maximize_char));
+                    ui.canvas.glyph(
+                        codicon,
+                        maximize_char,
+                        icon_maximize.x0,
+                        icon_maximize.y0,
+                        TEXT_DEFAULT,
+                    );
+
+                    let icon_close = chrome_close
+                        .center(ui.canvas.char_extent(codicon, canvas::Codicon::ChromeClose));
+                    ui.canvas.glyph(
+                        codicon,
+                        canvas::Codicon::ChromeClose,
+                        icon_close.x0,
+                        icon_close.y0,
+                        TEXT_DEFAULT,
+                    );
+
                     ui.end_frame(frame);
                 }
             }

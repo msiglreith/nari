@@ -49,7 +49,7 @@ impl Rect {
 
     pub fn center(self, rect: Self) -> Self {
         let dx = self.x0 - rect.x0 + self.x1;
-        let dy = self.x0 - rect.x0 + self.x1;
+        let dy = self.y0 - rect.y0 + self.y1;
 
         Self {
             x0: (dx - rect.x1) / 2,

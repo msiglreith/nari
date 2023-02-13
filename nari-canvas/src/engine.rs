@@ -4,6 +4,7 @@ use crate::{
         Font, FontProperties, FontScaled, FontSize, GlyphCache, GlyphId, GlyphKey, TextRun,
         TextRunGlyph, TextRunGraphemeCluster,
     },
+    layout::Rect,
     Raster,
 };
 use libc::{self, c_long, c_void, size_t};
@@ -117,7 +118,7 @@ impl Engine {
         &mut self.fonts[id]
     }
 
-    pub fn char_height(&mut self, font: FontScaled, c: char) -> f32 {
+    pub fn char_extent(&mut self, font: FontScaled, c: char) -> Rect {
         let font_ref = self.font(font.font);
         font_ref.scale(font.size);
 
@@ -132,7 +133,17 @@ impl Engine {
             );
         }
 
-        fxp6::new(unsafe { (*(*font_ref.face).glyph).metrics.height }).f32()
+        let x = unsafe { (*(*font_ref.face).glyph).metrics.horiBearingX };
+        let y = unsafe { (*(*font_ref.face).glyph).metrics.horiBearingY };
+        let width = unsafe { (*(*font_ref.face).glyph).metrics.width };
+        let height = unsafe { (*(*font_ref.face).glyph).metrics.height };
+
+        Rect {
+            x0: fxp6::new(x).f32().round() as i32,
+            y0: fxp6::new(y - height).f32().round() as i32,
+            x1: fxp6::new(x + width).f32().round() as i32,
+            y1: fxp6::new(y).f32().round() as i32,
+        }
     }
 
     pub fn layout_text<S: AsRef<str>>(&mut self, font: FontScaled, text: S) -> TextRun {
@@ -203,6 +214,35 @@ impl Engine {
         }
 
         text_run
+    }
+
+    pub(crate) fn build_glyph(
+        &mut self,
+        font: FontScaled,
+        c: char,
+        rasterizer: &mut Raster,
+        glyph_cache: &mut GlyphCache,
+    ) -> TextRunGlyph {
+        let font_ref = self.font(font.font);
+        font_ref.scale(font.size);
+
+        let glyph_key = GlyphKey {
+            id: font_ref.glyph_index(c),
+            offset: fxp6::new(0),
+        };
+
+        glyph_cache
+            .entry((font.size, glyph_key))
+            .or_insert_with(|| {
+                rasterizer.render(|raster| {
+                    font_ref.outline(glyph_key.id, glyph_key.offset.0, raster);
+                })
+            });
+
+        TextRunGlyph {
+            id: glyph_key.id,
+            offset: glyph_key.offset,
+        }
     }
 }
 

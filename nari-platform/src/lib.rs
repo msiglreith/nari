@@ -13,21 +13,26 @@ use std::{
 };
 use windows_sys::Win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM},
-    Graphics::Gdi::{RedrawWindow, ScreenToClient, ValidateRect, RDW_INTERNALPAINT},
+    Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromRect, RedrawWindow, ScreenToClient, ValidateRect,
+        MONITORINFOEXW, MONITOR_DEFAULTTONULL, RDW_INTERNALPAINT,
+    },
     System::SystemServices::IMAGE_DOS_HEADER,
     UI::{
         Controls::{HOVER_DEFAULT, WM_MOUSELEAVE},
         Input::KeyboardAndMouse::{TrackMouseEvent, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT},
         WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
-            GetWindowLongPtrW, LoadCursorW, RegisterClassExW, SetWindowLongPtrW, ShowWindow,
-            TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_USERDATA,
-            HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTRIGHT, HTTOP,
-            HTTOPLEFT, HTTOPRIGHT, IDC_ARROW, NCCALCSIZE_PARAMS, SW_SHOW, WM_CREATE, WM_DESTROY,
-            WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_NCMOUSELEAVE,
-            WM_NCMOUSEMOVE, WM_PAINT, WM_SIZE, WNDCLASSEXW, WS_CAPTION, WS_EX_ACCEPTFILES,
-            WS_EX_APPWINDOW, WS_EX_WINDOWEDGE, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_SIZEBOX,
-            WS_SYSMENU,
+            GetWindowLongPtrW, GetWindowPlacement, LoadCursorW, PostMessageW, RegisterClassExW,
+            SetWindowLongPtrW, ShowWindow, TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW,
+            CW_USEDEFAULT, GWL_USERDATA, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION,
+            HTCLIENT, HTCLOSE, HTLEFT, HTMAXBUTTON, HTMINBUTTON, HTRIGHT, HTTOP, HTTOPLEFT,
+            HTTOPRIGHT, IDC_ARROW, NCCALCSIZE_PARAMS, SC_CLOSE, SC_MAXIMIZE, SC_MINIMIZE,
+            SC_RESTORE, SW_MAXIMIZE, SW_SHOW, WINDOWPLACEMENT, WM_CREATE, WM_DESTROY, WM_MOUSEMOVE,
+            WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP,
+            WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_PAINT, WM_SIZE, WM_SYSCOMMAND, WNDCLASSEXW,
+            WS_CAPTION, WS_EX_ACCEPTFILES, WS_EX_APPWINDOW, WS_EX_WINDOWEDGE, WS_MAXIMIZEBOX,
+            WS_MINIMIZEBOX, WS_SIZEBOX, WS_SYSMENU,
         },
     },
 };
@@ -69,7 +74,7 @@ unsafe extern "system" fn window_proc(
         WM_NCMOUSEMOVE => println!("WM_NCMOUSEMOVE"),
         WM_MOUSELEAVE => println!("WM_MOUSELEAVE"),
         WM_NCMOUSELEAVE => println!("WM_NCMOUSELEAVE"),
-        _ => println!("{}", msg),
+        _ => (), // println!("{}", msg),
     }
 
     let user_data = {
@@ -95,8 +100,19 @@ unsafe extern "system" fn window_proc(
             }
 
             let params = &mut *(lparam as *mut NCCALCSIZE_PARAMS);
-            params.rgrc[0].top -= 1;
-            params.rgrc[0].bottom -= 1;
+
+            if surface.is_maximized() {
+                // limit to current monitor, otherwise window gets too large
+                let monitor = MonitorFromRect(&params.rgrc[0], MONITOR_DEFAULTTONULL);
+                let mut monitor_info: MONITORINFOEXW = mem::zeroed();
+                monitor_info.monitorInfo.cbSize = mem::size_of::<MONITORINFOEXW>() as u32;
+                GetMonitorInfoW(monitor, &mut monitor_info as *mut _ as *mut _);
+                params.rgrc[0] = monitor_info.monitorInfo.rcWork;
+            } else {
+                // hack to recover the border shadow effect
+                params.rgrc[0].top -= 1;
+                params.rgrc[0].bottom -= 1;
+            }
 
             0
         }
@@ -129,9 +145,48 @@ unsafe extern "system" fn window_proc(
                 SurfaceArea::TopLeft => HTTOPLEFT,
                 SurfaceArea::TopRight => HTTOPRIGHT,
                 SurfaceArea::Caption => HTCAPTION,
+                SurfaceArea::Minimize => HTMINBUTTON,
+                SurfaceArea::Maximize => HTMAXBUTTON,
+                SurfaceArea::Close => HTCLOSE,
             };
 
             wm_area as LRESULT
+        }
+
+        WM_NCLBUTTONDOWN => {
+            user_data.keydown_area.set(wparam);
+            match wparam as u32 {
+                // Prevent windows from drawing ugly legacy buttons on button down..
+                // But we manually have to send the SYSCOMMANDs now
+                HTMINBUTTON | HTMAXBUTTON | HTCLOSE => 0,
+                _ => DefWindowProcW(window, msg, wparam, lparam),
+            }
+        }
+
+        WM_NCLBUTTONUP => {
+            let prev_hit = user_data.keydown_area.get();
+            if prev_hit == wparam {
+                match wparam as u32 {
+                    HTMINBUTTON => {
+                        PostMessageW(window, WM_SYSCOMMAND, SC_MINIMIZE as _, lparam);
+                    }
+                    HTMAXBUTTON => {
+                        let action = if surface.is_maximized() {
+                            SC_RESTORE
+                        } else {
+                            SC_MAXIMIZE
+                        };
+                        // restore if maximized SC_RESTORE
+                        PostMessageW(window, WM_SYSCOMMAND, action as _, lparam);
+                    }
+                    HTCLOSE => {
+                        PostMessageW(window, WM_SYSCOMMAND, SC_CLOSE as _, lparam);
+                    }
+                    _ => {}
+                }
+            }
+
+            DefWindowProcW(window, msg, wparam, lparam)
         }
 
         WM_MOUSEMOVE => {
@@ -153,26 +208,28 @@ unsafe extern "system" fn window_proc(
         }
 
         WM_NCMOUSEMOVE => {
-            if wparam == HTCAPTION as usize {
-                // Track to get `WM_NCMOUSELEAVE` events
-                TrackMouseEvent(&mut TRACKMOUSEEVENT {
-                    cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
-                    dwFlags: TME_LEAVE | TME_NONCLIENT,
-                    hwndTrack: window,
-                    dwHoverTime: HOVER_DEFAULT,
-                });
+            match wparam as u32 {
+                HTCAPTION | HTMINBUTTON | HTMAXBUTTON | HTCLOSE => {
+                    // Track to get `WM_NCMOUSELEAVE` events
+                    TrackMouseEvent(&mut TRACKMOUSEEVENT {
+                        cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                        dwFlags: TME_LEAVE | TME_NONCLIENT,
+                        hwndTrack: window,
+                        dwHoverTime: HOVER_DEFAULT,
+                    });
 
-                let x = loword(lparam as u32) as i16 as i32;
-                let y = hiword(lparam as u32) as i16 as i32;
+                    let x = loword(lparam as u32) as i16 as i32;
+                    let y = hiword(lparam as u32) as i16 as i32;
 
-                let mut pt = POINT { x, y };
-                ScreenToClient(window, &mut pt);
-                user_data.mouse_position.set(Some((pt.x, pt.y)));
-            } else {
-                // handled by system, considered out of user area
-                user_data.mouse_position.set(None);
+                    let mut pt = POINT { x, y };
+                    ScreenToClient(window, &mut pt);
+                    user_data.mouse_position.set(Some((pt.x, pt.y)));
+                }
+                _ => {
+                    // handled by system, considered out of user area
+                    user_data.mouse_position.set(None);
+                }
             }
-
             surface.redraw();
 
             0
@@ -189,7 +246,7 @@ unsafe extern "system" fn window_proc(
             user_data.send(surface, Event::Paint);
             ValidateRect(window, ptr::null());
 
-            0
+            DefWindowProcW(window, msg, wparam, lparam)
         }
         WM_SIZE => {
             let width = loword(lparam as u32) as u32;
@@ -214,6 +271,7 @@ pub enum ControlFlow {
     Exit,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SurfaceArea {
     Client,
     Left,
@@ -225,6 +283,11 @@ pub enum SurfaceArea {
     Bottom,
     Top,
     Caption,
+
+    // Buttons
+    Minimize,
+    Maximize,
+    Close,
 }
 
 pub enum Event<'a> {
@@ -241,6 +304,7 @@ struct UserData {
     control_flow: Cell<ControlFlow>,
     event_callback: RefCell<Box<dyn FnMut(EventLoop, Event) -> ControlFlow>>,
     mouse_position: Cell<Option<(i32, i32)>>,
+    keydown_area: Cell<WPARAM>,
 }
 
 impl UserData {
@@ -290,6 +354,15 @@ impl Surface {
         }
     }
 
+    pub fn is_maximized(&self) -> bool {
+        unsafe {
+            let mut placement: WINDOWPLACEMENT = mem::zeroed();
+            placement.length = mem::size_of::<WINDOWPLACEMENT>() as u32;
+            GetWindowPlacement(self.hwnd, &mut placement);
+            placement.showCmd == SW_MAXIMIZE
+        }
+    }
+
     fn redraw(&self) {
         unsafe {
             RedrawWindow(self.hwnd, ptr::null(), 0, RDW_INTERNALPAINT);
@@ -307,6 +380,7 @@ impl Platform {
             control_flow: Cell::new(ControlFlow::Continue),
             event_callback: RefCell::new(Box::new(|_, _| ControlFlow::Continue)),
             mouse_position: Cell::new(None),
+            keydown_area: Cell::new(HTCLIENT as WPARAM),
         });
 
         unsafe {

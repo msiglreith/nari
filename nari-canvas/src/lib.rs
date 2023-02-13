@@ -306,6 +306,36 @@ impl Canvas {
         tiles
     }
 
+    fn build_glyph(&mut self, pool: gpu::Pool, font: typo::FontScaled, c: char) -> typo::TextRunGlyph {
+        let mut rasterizer = Raster {
+            gpu: &mut self.gpu,
+            atlas: &mut self.atlas,
+            scene: &mut self.scene,
+            rasterizer: &mut self.rasterizer,
+            pool,
+        };
+        let glyph =
+            self.engine
+                .build_glyph(font, c, &mut rasterizer, &mut self.glyph_cache);
+        rasterizer.upload_atlas();
+
+        glyph
+    }
+
+    pub fn glyph<C: Into<char>>(&mut self, font: typo::FontScaled, c: C, x: i32, y: i32, color: Color) {
+        let glyph = self.build_glyph(self.pool_canvas, font, c.into());
+        let key = typo::GlyphKey {
+            id: glyph.id,
+            offset: glyph.offset,
+        };
+        let tiles = self
+            .glyph_cache
+            .get(&(font.size, key))
+            .expect(&format!("missing {:?}", (font.size, key)));
+
+        self.scene.path_flip(tiles, &self.atlas, x, y, color, false, false);
+    }
+
     pub fn squircle(&mut self, squircle: Squircle, color: Color) {
         let radius = squircle
             .radius
@@ -390,8 +420,8 @@ impl Canvas {
             .path_flip(corner, &self.atlas, inner.x1, inner.y1, color, false, false);
     }
 
-    pub fn char_height(&mut self, font: typo::FontScaled, c: char) -> f32 {
-        self.engine.char_height(font, c)
+    pub fn char_extent<C: Into<char>>(&mut self, font: typo::FontScaled, c: C) -> Rect {
+        self.engine.char_extent(font, c.into())
     }
 
     pub fn text<S: AsRef<str>>(&mut self, font: typo::FontScaled, pen: typo::Pen, text: S) {

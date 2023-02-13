@@ -15,9 +15,12 @@ features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_System_SystemServices",
+    "Win32_UI_Controls",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
 ]
 
 [dev-dependencies]
 nari-gpu = { path = "../nari-gpu" }
+nari-canvas = { path = "../nari-canvas" }
 anyhow = "1"

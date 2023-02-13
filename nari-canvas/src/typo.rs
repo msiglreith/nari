@@ -142,7 +142,7 @@ pub struct TextRunGraphemeCluster {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub(crate) struct TextRunGlyph {
+pub struct TextRunGlyph {
     pub id: GlyphId,
     pub offset: fxp6,
 }
