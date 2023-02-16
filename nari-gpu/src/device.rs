@@ -864,6 +864,8 @@ impl Gpu {
                 for allocation in pool.shrine.allocations.drain(..) {
                     self.allocator.free(allocation)?;
                 }
+
+                pool.state = PoolState::Free;
             }
         }
         Ok(())

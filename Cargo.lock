@@ -638,6 +638,7 @@ name = "nari-platform"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "nari-canvas",
  "nari-gpu",
  "raw-window-handle",
  "windows-sys 0.42.0",

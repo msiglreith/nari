@@ -544,6 +544,9 @@ impl Canvas {
 
     pub unsafe fn composition_begin(&mut self, pool: gpu::Pool) {
         self.pool_canvas = pool;
+        self.scene.vertices.clear();
+        self.scene.atlas_data.clear();
+        self.scene.atlas_tiles.clear();
     }
 
     pub unsafe fn composition_end(
