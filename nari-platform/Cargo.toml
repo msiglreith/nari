@@ -10,10 +10,11 @@ workspace = ".."
 raw-window-handle = "0.5"
 
 [target.'cfg(target_os = "windows")'.dependencies.windows-sys]
-version = "0.42"
+version = "0.45"
 features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Graphics_Dwm",
     "Win32_System_SystemServices",
     "Win32_UI_Controls",
     "Win32_UI_WindowsAndMessaging",

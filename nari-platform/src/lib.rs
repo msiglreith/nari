@@ -2,6 +2,7 @@ use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle, Win32WindowHandle,
     WindowsDisplayHandle,
 };
+use windows::Win32::UI::WindowsAndMessaging::WM_ERASEBKGND;
 use std::{
     cell::{Cell, RefCell},
     ffi::OsStr,
@@ -13,10 +14,10 @@ use std::{
 };
 use windows_sys::Win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM},
-    Graphics::Gdi::{
+    Graphics::{Dwm::DwmFlush, Gdi::{
         GetMonitorInfoW, MonitorFromRect, RedrawWindow, ScreenToClient, ValidateRect,
         MONITORINFOEXW, MONITOR_DEFAULTTONULL, RDW_INTERNALPAINT,
-    },
+    }},
     System::SystemServices::IMAGE_DOS_HEADER,
     UI::{
         Controls::{HOVER_DEFAULT, WM_MOUSELEAVE},
@@ -32,7 +33,7 @@ use windows_sys::Win32::{
             WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP,
             WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_PAINT, WM_SIZE, WM_SYSCOMMAND, WNDCLASSEXW,
             WS_CAPTION, WS_EX_ACCEPTFILES, WS_EX_APPWINDOW, WS_EX_WINDOWEDGE, WS_MAXIMIZEBOX,
-            WS_MINIMIZEBOX, WS_SIZEBOX, WS_SYSMENU,
+            WS_MINIMIZEBOX, WS_SIZEBOX, WS_SYSMENU, WM_NCPAINT, WS_EX_NOREDIRECTIONBITMAP, WS_OVERLAPPEDWINDOW
         },
     },
 };
@@ -74,20 +75,32 @@ unsafe extern "system" fn window_proc(
         WM_NCMOUSEMOVE => println!("WM_NCMOUSEMOVE"),
         WM_MOUSELEAVE => println!("WM_MOUSELEAVE"),
         WM_NCMOUSELEAVE => println!("WM_NCMOUSELEAVE"),
+        WM_PAINT => println!("WM_PAINT"),
         _ => (), // println!("{}", msg),
     }
 
     let user_data = {
         let ptr = GetWindowLongPtrW(window, GWL_USERDATA) as *mut UserData;
         if ptr.is_null() {
-            return match msg {
+            match msg {
                 WM_NCCREATE => {
                     let createstruct = &mut *(lparam as *mut CREATESTRUCTW);
                     SetWindowLongPtrW(window, GWL_USERDATA, createstruct.lpCreateParams as _);
-                    DefWindowProcW(window, msg, wparam, lparam)
+                    use windows_sys::Win32::Graphics::Dwm::DwmExtendFrameIntoClientArea;
+                    use windows_sys::Win32::UI::Controls::MARGINS;
+
+                    let margins = MARGINS {
+                        cxLeftWidth: 0,
+                        cxRightWidth: 0,
+                        cyTopHeight: 1,
+                        cyBottomHeight: 0,
+                    };
+                    DwmExtendFrameIntoClientArea(window, &margins);
                 }
-                _ => DefWindowProcW(window, msg, wparam, lparam),
+                _ => (),
             };
+
+            return DefWindowProcW(window, msg, wparam, lparam);
         }
 
         &mut *ptr
@@ -108,12 +121,10 @@ unsafe extern "system" fn window_proc(
                 monitor_info.monitorInfo.cbSize = mem::size_of::<MONITORINFOEXW>() as u32;
                 GetMonitorInfoW(monitor, &mut monitor_info as *mut _ as *mut _);
                 params.rgrc[0] = monitor_info.monitorInfo.rcWork;
-            } else {
-                // hack to recover the border shadow effect
-                params.rgrc[0].top -= 1;
-                params.rgrc[0].bottom -= 1;
             }
 
+            // Sync with DWM here giving us maximum amount of time to redraw the screen.
+            DwmFlush();
             0
         }
 
@@ -342,6 +353,10 @@ impl Surface {
         }
     }
 
+    pub fn hwnd(self) -> HWND {
+        self.hwnd
+    }
+
     pub fn extent(&self) -> Extent {
         let mut rect = MaybeUninit::uninit();
         unsafe {
@@ -363,7 +378,7 @@ impl Surface {
         }
     }
 
-    fn redraw(&self) {
+    pub fn redraw(&self) {
         unsafe {
             RedrawWindow(self.hwnd, ptr::null(), 0, RDW_INTERNALPAINT);
         }
