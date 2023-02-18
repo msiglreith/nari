@@ -20,10 +20,13 @@ use windows_sys::Win32::{
             MONITORINFOEXW, MONITOR_DEFAULTTONULL, RDW_INTERNALPAINT,
         },
     },
-    System::SystemServices::IMAGE_DOS_HEADER,
+    System::SystemServices::{IMAGE_DOS_HEADER, MK_LBUTTON, MK_RBUTTON},
     UI::{
         Controls::{HOVER_DEFAULT, WM_MOUSELEAVE},
-        Input::KeyboardAndMouse::{TrackMouseEvent, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT},
+        Input::KeyboardAndMouse::{
+            GetKeyState, TrackMouseEvent, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, VK_CONTROL,
+            VK_MENU, VK_SHIFT,
+        },
         WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
             GetWindowLongPtrW, GetWindowPlacement, LoadCursorW, PostMessageW, RegisterClassExW,
@@ -31,12 +34,13 @@ use windows_sys::Win32::{
             CW_USEDEFAULT, GWL_USERDATA, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION,
             HTCLIENT, HTCLOSE, HTLEFT, HTMAXBUTTON, HTMINBUTTON, HTRIGHT, HTTOP, HTTOPLEFT,
             HTTOPRIGHT, IDC_ARROW, NCCALCSIZE_PARAMS, SC_CLOSE, SC_MAXIMIZE, SC_MINIMIZE,
-            SC_RESTORE, SW_MAXIMIZE, SW_SHOW, WINDOWPLACEMENT, WM_CREATE, WM_DESTROY, WM_MOUSEMOVE,
-            WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP,
-            WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_NCPAINT, WM_PAINT, WM_SIZE, WM_SYSCOMMAND,
+            SC_RESTORE, SW_MAXIMIZE, SW_SHOW, WINDOWPLACEMENT, WM_CHAR, WM_CREATE, WM_DESTROY,
+            WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE,
+            WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE,
+            WM_NCPAINT, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WM_SYSCOMMAND,
             WNDCLASSEXW, WS_CAPTION, WS_EX_ACCEPTFILES, WS_EX_APPWINDOW, WS_EX_NOREDIRECTIONBITMAP,
             WS_EX_WINDOWEDGE, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPEDWINDOW, WS_SIZEBOX,
-            WS_SYSMENU, WM_KEYDOWN, WM_CHAR
+            WS_SYSMENU,
         },
     },
 };
@@ -206,8 +210,8 @@ unsafe extern "system" fn window_proc(
             if let Some(high_surrogate) = user_data.u16_surrogate.take() {
                 let is_low_surrogate = (0xDC00..=0xDFFF).contains(&wparam);
                 if is_low_surrogate {
-                    let surrogate_pair = [high_surrogate, wparam as u16];
-                    if let Some(Ok(c)) = char::decode_utf16([high_surrogate, wparam as u16]).next() {
+                    if let Some(Ok(c)) = char::decode_utf16([high_surrogate, wparam as u16]).next()
+                    {
                         if !c.is_control() {
                             user_data.send(surface, Event::Char(c));
                         }
@@ -227,6 +231,25 @@ unsafe extern "system" fn window_proc(
             0
         }
 
+        WM_LBUTTONDOWN | WM_LBUTTONUP | WM_RBUTTONDOWN | WM_RBUTTONUP => {
+            let buttons = {
+                let mut buttons = MouseButtons::empty();
+                let wparam = wparam as u32;
+                if wparam & MK_LBUTTON != 0 {
+                    buttons |= MouseButtons::LEFT;
+                }
+                if wparam & MK_RBUTTON != 0 {
+                    buttons |= MouseButtons::RIGHT;
+                }
+                buttons
+            };
+            let modifiers = Modifiers::query();
+
+            user_data.send(surface, Event::MouseButton { buttons, modifiers });
+
+            0
+        }
+
         WM_MOUSEMOVE => {
             let x = loword(lparam as u32) as i16 as i32;
             let y = hiword(lparam as u32) as i16 as i32;
@@ -240,7 +263,7 @@ unsafe extern "system" fn window_proc(
             });
 
             user_data.mouse_position.set(Some((x, y)));
-            surface.redraw();
+            user_data.send(surface, Event::MouseMove);
 
             0
         }
@@ -290,7 +313,6 @@ unsafe extern "system" fn window_proc(
             let width = loword(lparam as u32) as u32;
             let height = hiword(lparam as u32) as u32;
             user_data.send(surface, Event::Resize(Extent { width, height }));
-            surface.redraw();
 
             0
         }
@@ -328,9 +350,44 @@ pub enum SurfaceArea {
     Close,
 }
 
+bitflags::bitflags! {
+    pub struct Modifiers: u32 {
+        const ALT     = 0b001;
+        const CONTROL = 0b010;
+        const SHIFT   = 0b100;
+    }
+
+    pub struct MouseButtons: u32 {
+        const LEFT    = 0b01;
+        const RIGHT   = 0b10;
+    }
+}
+
+impl Modifiers {
+    unsafe fn query() -> Self {
+        let mut modifiers = Modifiers::empty();
+        if GetKeyState(VK_MENU as i32) & 0x80 != 0 {
+            modifiers |= Modifiers::ALT;
+        }
+        if GetKeyState(VK_CONTROL as i32) & 0x80 != 0 {
+            modifiers |= Modifiers::CONTROL;
+        }
+        if GetKeyState(VK_SHIFT as i32) & 0x80 != 0 {
+            modifiers |= Modifiers::SHIFT;
+        }
+        modifiers
+    }
+}
+
 pub enum Event<'a> {
     Paint,
     Resize(Extent),
+
+    MouseButton {
+        buttons: MouseButtons,
+        modifiers: Modifiers,
+    },
+    MouseMove,
 
     /// Character input for text processing.
     Char(char),
@@ -347,7 +404,7 @@ struct UserData {
     control_flow: Cell<ControlFlow>,
     event_callback: RefCell<Box<dyn FnMut(EventLoop, Event) -> ControlFlow>>,
     mouse_position: Cell<Option<(i32, i32)>>,
-    keydown_area: Cell<WPARAM>, // WM_NCLBUTTON
+    keydown_area: Cell<WPARAM>,       // WM_NCLBUTTON
     u16_surrogate: Cell<Option<u16>>, // WM_CHAR
 }
 

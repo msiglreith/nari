@@ -638,6 +638,7 @@ name = "nari-platform"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bitflags",
  "nari-canvas",
  "nari-gpu",
  "raw-window-handle",

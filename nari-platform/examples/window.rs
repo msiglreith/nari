@@ -142,7 +142,13 @@ fn main() -> anyhow::Result<()> {
                 Event::Resize(extent) => {
                     size = extent;
                     ui.resize(size);
+
+                    event_loop.surface.redraw();
                 }
+                Event::MouseButton { buttons, modifiers } => {
+                    dbg!(buttons, modifiers);
+                }
+                Event::MouseMove => {}
                 Event::Char(c) => {
                     println!("{:?}", c);
                 }
