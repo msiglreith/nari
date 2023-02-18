@@ -1,10 +1,10 @@
 use crate::{
     fxp::fxp6,
+    layout::Rect,
     typo::{
         Font, FontProperties, FontScaled, FontSize, GlyphCache, GlyphId, GlyphKey, TextRun,
         TextRunGlyph, TextRunGraphemeCluster,
     },
-    layout::Rect,
     Raster,
 };
 use libc::{self, c_long, c_void, size_t};

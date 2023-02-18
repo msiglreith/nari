@@ -2,7 +2,6 @@ use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle, Win32WindowHandle,
     WindowsDisplayHandle,
 };
-use windows::Win32::UI::WindowsAndMessaging::WM_ERASEBKGND;
 use std::{
     cell::{Cell, RefCell},
     ffi::OsStr,
@@ -14,10 +13,13 @@ use std::{
 };
 use windows_sys::Win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM},
-    Graphics::{Dwm::DwmFlush, Gdi::{
-        GetMonitorInfoW, MonitorFromRect, RedrawWindow, ScreenToClient, ValidateRect,
-        MONITORINFOEXW, MONITOR_DEFAULTTONULL, RDW_INTERNALPAINT,
-    }},
+    Graphics::{
+        Dwm::DwmFlush,
+        Gdi::{
+            GetMonitorInfoW, MonitorFromRect, RedrawWindow, ScreenToClient, ValidateRect,
+            MONITORINFOEXW, MONITOR_DEFAULTTONULL, RDW_INTERNALPAINT,
+        },
+    },
     System::SystemServices::IMAGE_DOS_HEADER,
     UI::{
         Controls::{HOVER_DEFAULT, WM_MOUSELEAVE},
@@ -31,9 +33,10 @@ use windows_sys::Win32::{
             HTTOPRIGHT, IDC_ARROW, NCCALCSIZE_PARAMS, SC_CLOSE, SC_MAXIMIZE, SC_MINIMIZE,
             SC_RESTORE, SW_MAXIMIZE, SW_SHOW, WINDOWPLACEMENT, WM_CREATE, WM_DESTROY, WM_MOUSEMOVE,
             WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP,
-            WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_PAINT, WM_SIZE, WM_SYSCOMMAND, WNDCLASSEXW,
-            WS_CAPTION, WS_EX_ACCEPTFILES, WS_EX_APPWINDOW, WS_EX_WINDOWEDGE, WS_MAXIMIZEBOX,
-            WS_MINIMIZEBOX, WS_SIZEBOX, WS_SYSMENU, WM_NCPAINT, WS_EX_NOREDIRECTIONBITMAP, WS_OVERLAPPEDWINDOW
+            WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_NCPAINT, WM_PAINT, WM_SIZE, WM_SYSCOMMAND,
+            WNDCLASSEXW, WS_CAPTION, WS_EX_ACCEPTFILES, WS_EX_APPWINDOW, WS_EX_NOREDIRECTIONBITMAP,
+            WS_EX_WINDOWEDGE, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPEDWINDOW, WS_SIZEBOX,
+            WS_SYSMENU,
         },
     },
 };

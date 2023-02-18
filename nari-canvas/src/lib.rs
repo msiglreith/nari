@@ -306,7 +306,12 @@ impl Canvas {
         tiles
     }
 
-    fn build_glyph(&mut self, pool: gpu::Pool, font: typo::FontScaled, c: char) -> typo::TextRunGlyph {
+    fn build_glyph(
+        &mut self,
+        pool: gpu::Pool,
+        font: typo::FontScaled,
+        c: char,
+    ) -> typo::TextRunGlyph {
         let mut rasterizer = Raster {
             gpu: &mut self.gpu,
             atlas: &mut self.atlas,
@@ -314,15 +319,22 @@ impl Canvas {
             rasterizer: &mut self.rasterizer,
             pool,
         };
-        let glyph =
-            self.engine
-                .build_glyph(font, c, &mut rasterizer, &mut self.glyph_cache);
+        let glyph = self
+            .engine
+            .build_glyph(font, c, &mut rasterizer, &mut self.glyph_cache);
         rasterizer.upload_atlas();
 
         glyph
     }
 
-    pub fn glyph<C: Into<char>>(&mut self, font: typo::FontScaled, c: C, x: i32, y: i32, color: Color) {
+    pub fn glyph<C: Into<char>>(
+        &mut self,
+        font: typo::FontScaled,
+        c: C,
+        x: i32,
+        y: i32,
+        color: Color,
+    ) {
         let glyph = self.build_glyph(self.pool_canvas, font, c.into());
         let key = typo::GlyphKey {
             id: glyph.id,
@@ -333,7 +345,8 @@ impl Canvas {
             .get(&(font.size, key))
             .expect(&format!("missing {:?}", (font.size, key)));
 
-        self.scene.path_flip(tiles, &self.atlas, x, y, color, false, false);
+        self.scene
+            .path_flip(tiles, &self.atlas, x, y, color, false, false);
     }
 
     pub fn squircle(&mut self, squircle: Squircle, color: Color) {
