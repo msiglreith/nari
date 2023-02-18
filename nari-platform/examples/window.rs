@@ -143,6 +143,9 @@ fn main() -> anyhow::Result<()> {
                     size = extent;
                     ui.resize(size);
                 }
+                Event::Char(c) => {
+                    println!("{:?}", c);
+                }
                 Event::Hittest { x, y, area } => {
                     let w = size.width as i32;
                     let h = size.height as i32;

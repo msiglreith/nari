@@ -36,7 +36,7 @@ use windows_sys::Win32::{
             WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_NCPAINT, WM_PAINT, WM_SIZE, WM_SYSCOMMAND,
             WNDCLASSEXW, WS_CAPTION, WS_EX_ACCEPTFILES, WS_EX_APPWINDOW, WS_EX_NOREDIRECTIONBITMAP,
             WS_EX_WINDOWEDGE, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPEDWINDOW, WS_SIZEBOX,
-            WS_SYSMENU,
+            WS_SYSMENU, WM_KEYDOWN, WM_CHAR
         },
     },
 };
@@ -190,7 +190,6 @@ unsafe extern "system" fn window_proc(
                         } else {
                             SC_MAXIMIZE
                         };
-                        // restore if maximized SC_RESTORE
                         PostMessageW(window, WM_SYSCOMMAND, action as _, lparam);
                     }
                     HTCLOSE => {
@@ -201,6 +200,31 @@ unsafe extern "system" fn window_proc(
             }
 
             DefWindowProcW(window, msg, wparam, lparam)
+        }
+
+        WM_CHAR => {
+            if let Some(high_surrogate) = user_data.u16_surrogate.take() {
+                let is_low_surrogate = (0xDC00..=0xDFFF).contains(&wparam);
+                if is_low_surrogate {
+                    let surrogate_pair = [high_surrogate, wparam as u16];
+                    if let Some(Ok(c)) = char::decode_utf16([high_surrogate, wparam as u16]).next() {
+                        if !c.is_control() {
+                            user_data.send(surface, Event::Char(c));
+                        }
+                    }
+                }
+            }
+
+            let is_high_surrogate = (0xDC00..=0xDFFF).contains(&wparam);
+            if is_high_surrogate {
+                user_data.u16_surrogate.set(Some(wparam as u16));
+            } else if let Some(c) = char::from_u32(wparam as u32) {
+                if !c.is_control() {
+                    user_data.send(surface, Event::Char(c));
+                }
+            }
+
+            0
         }
 
         WM_MOUSEMOVE => {
@@ -307,6 +331,11 @@ pub enum SurfaceArea {
 pub enum Event<'a> {
     Paint,
     Resize(Extent),
+
+    /// Character input for text processing.
+    Char(char),
+
+    /// Window Area hittest.
     Hittest {
         x: i32,
         y: i32,
@@ -318,7 +347,8 @@ struct UserData {
     control_flow: Cell<ControlFlow>,
     event_callback: RefCell<Box<dyn FnMut(EventLoop, Event) -> ControlFlow>>,
     mouse_position: Cell<Option<(i32, i32)>>,
-    keydown_area: Cell<WPARAM>,
+    keydown_area: Cell<WPARAM>, // WM_NCLBUTTON
+    u16_surrogate: Cell<Option<u16>>, // WM_CHAR
 }
 
 impl UserData {
@@ -399,6 +429,7 @@ impl Platform {
             event_callback: RefCell::new(Box::new(|_, _| ControlFlow::Continue)),
             mouse_position: Cell::new(None),
             keydown_area: Cell::new(HTCLIENT as WPARAM),
+            u16_surrogate: Cell::new(None),
         });
 
         unsafe {
