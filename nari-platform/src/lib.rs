@@ -14,7 +14,7 @@ use std::{
 use windows_sys::Win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM},
     Graphics::{
-        Dwm::DwmFlush,
+        Dwm::{DwmExtendFrameIntoClientArea, DwmFlush},
         Gdi::{
             GetMonitorInfoW, MonitorFromRect, RedrawWindow, ScreenToClient, ValidateRect,
             MONITORINFOEXW, MONITOR_DEFAULTTONULL, RDW_INTERNALPAINT,
@@ -22,7 +22,7 @@ use windows_sys::Win32::{
     },
     System::SystemServices::{IMAGE_DOS_HEADER, MK_LBUTTON, MK_RBUTTON},
     UI::{
-        Controls::{HOVER_DEFAULT, WM_MOUSELEAVE},
+        Controls::{HOVER_DEFAULT, MARGINS, WM_MOUSELEAVE},
         Input::KeyboardAndMouse::{
             GetKeyState, TrackMouseEvent, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, VK_CONTROL,
             VK_MENU, VK_SHIFT,
@@ -35,15 +35,16 @@ use windows_sys::Win32::{
             HTCLIENT, HTCLOSE, HTLEFT, HTMAXBUTTON, HTMINBUTTON, HTRIGHT, HTTOP, HTTOPLEFT,
             HTTOPRIGHT, IDC_ARROW, NCCALCSIZE_PARAMS, SC_CLOSE, SC_MAXIMIZE, SC_MINIMIZE,
             SC_RESTORE, SW_MAXIMIZE, SW_SHOW, WINDOWPLACEMENT, WM_CHAR, WM_CREATE, WM_DESTROY,
-            WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE,
-            WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE,
-            WM_NCPAINT, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WM_SYSCOMMAND,
-            WNDCLASSEXW, WS_CAPTION, WS_EX_ACCEPTFILES, WS_EX_APPWINDOW, WS_EX_NOREDIRECTIONBITMAP,
-            WS_EX_WINDOWEDGE, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_OVERLAPPEDWINDOW, WS_SIZEBOX,
-            WS_SYSMENU,
+            WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCCALCSIZE,
+            WM_NCCREATE, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE,
+            WM_NCMOUSEMOVE, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WM_SYSCOMMAND,
+            WNDCLASSEXW, WS_CAPTION, WS_EX_ACCEPTFILES, WS_EX_APPWINDOW, WS_EX_WINDOWEDGE,
+            WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_SIZEBOX, WS_SYSMENU,
         },
     },
 };
+
+pub use keyboard_types::KeyState;
 
 fn encode_wide(string: impl AsRef<OsStr>) -> Vec<u16> {
     string.as_ref().encode_wide().chain(once(0)).collect()
@@ -93,9 +94,11 @@ unsafe extern "system" fn window_proc(
                 WM_NCCREATE => {
                     let createstruct = &mut *(lparam as *mut CREATESTRUCTW);
                     SetWindowLongPtrW(window, GWL_USERDATA, createstruct.lpCreateParams as _);
-                    use windows_sys::Win32::Graphics::Dwm::DwmExtendFrameIntoClientArea;
-                    use windows_sys::Win32::UI::Controls::MARGINS;
 
+                    let user_data = createstruct.lpCreateParams as *mut UserData;
+                    (*user_data).surface.set(surface);
+
+                    // add window shadow effect
                     let margins = MARGINS {
                         cxLeftWidth: 0,
                         cxRightWidth: 0,
@@ -143,14 +146,11 @@ unsafe extern "system" fn window_proc(
             ScreenToClient(window, &mut point);
 
             let mut area = SurfaceArea::Client;
-            user_data.send(
-                surface,
-                Event::Hittest {
-                    x: point.x,
-                    y: point.y,
-                    area: &mut area,
-                },
-            );
+            user_data.send(Event::Hittest {
+                x: point.x,
+                y: point.y,
+                area: &mut area,
+            });
 
             let wm_area = match area {
                 SurfaceArea::Client => HTCLIENT,
@@ -213,7 +213,7 @@ unsafe extern "system" fn window_proc(
                     if let Some(Ok(c)) = char::decode_utf16([high_surrogate, wparam as u16]).next()
                     {
                         if !c.is_control() {
-                            user_data.send(surface, Event::Char(c));
+                            user_data.send(Event::Char(c));
                         }
                     }
                 }
@@ -224,29 +224,39 @@ unsafe extern "system" fn window_proc(
                 user_data.u16_surrogate.set(Some(wparam as u16));
             } else if let Some(c) = char::from_u32(wparam as u32) {
                 if !c.is_control() {
-                    user_data.send(surface, Event::Char(c));
+                    user_data.send(Event::Char(c));
                 }
             }
 
             0
         }
 
-        WM_LBUTTONDOWN | WM_LBUTTONUP | WM_RBUTTONDOWN | WM_RBUTTONUP => {
-            let buttons = {
-                let mut buttons = MouseButtons::empty();
-                let wparam = wparam as u32;
-                if wparam & MK_LBUTTON != 0 {
-                    buttons |= MouseButtons::LEFT;
-                }
-                if wparam & MK_RBUTTON != 0 {
-                    buttons |= MouseButtons::RIGHT;
-                }
-                buttons
-            };
-            let modifiers = Modifiers::query();
+        WM_KEYDOWN => {
+            println!("KEYDOWN {} {}", wparam, lparam);
 
-            user_data.send(surface, Event::MouseButton { buttons, modifiers });
+            0
+        }
 
+        WM_KEYUP => {
+            println!("KEYUP {} {}", wparam, lparam);
+
+            0
+        }
+
+        WM_LBUTTONDOWN => {
+            user_data.on_button(wparam, MouseButtons::LEFT, KeyState::Down);
+            0
+        }
+        WM_LBUTTONUP => {
+            user_data.on_button(wparam, MouseButtons::LEFT, KeyState::Up);
+            0
+        }
+        WM_RBUTTONDOWN => {
+            user_data.on_button(wparam, MouseButtons::RIGHT, KeyState::Down);
+            0
+        }
+        WM_RBUTTONUP => {
+            user_data.on_button(wparam, MouseButtons::RIGHT, KeyState::Up);
             0
         }
 
@@ -263,7 +273,7 @@ unsafe extern "system" fn window_proc(
             });
 
             user_data.mouse_position.set(Some((x, y)));
-            user_data.send(surface, Event::MouseMove);
+            user_data.send(Event::MouseMove);
 
             0
         }
@@ -304,7 +314,7 @@ unsafe extern "system" fn window_proc(
         }
 
         WM_PAINT => {
-            user_data.send(surface, Event::Paint);
+            user_data.send(Event::Paint);
             ValidateRect(window, ptr::null());
 
             DefWindowProcW(window, msg, wparam, lparam)
@@ -312,7 +322,7 @@ unsafe extern "system" fn window_proc(
         WM_SIZE => {
             let width = loword(lparam as u32) as u32;
             let height = hiword(lparam as u32) as u32;
-            user_data.send(surface, Event::Resize(Extent { width, height }));
+            user_data.send(Event::Resize(Extent { width, height }));
 
             0
         }
@@ -384,7 +394,8 @@ pub enum Event<'a> {
     Resize(Extent),
 
     MouseButton {
-        buttons: MouseButtons,
+        button: MouseButtons,
+        state: KeyState,
         modifiers: Modifiers,
     },
     MouseMove,
@@ -401,28 +412,53 @@ pub enum Event<'a> {
 }
 
 struct UserData {
+    surface: Cell<Surface>,
     control_flow: Cell<ControlFlow>,
     event_callback: RefCell<Box<dyn FnMut(EventLoop, Event) -> ControlFlow>>,
     mouse_position: Cell<Option<(i32, i32)>>,
+    mouse_buttons: Cell<MouseButtons>,
     keydown_area: Cell<WPARAM>,       // WM_NCLBUTTON
     u16_surrogate: Cell<Option<u16>>, // WM_CHAR
 }
 
 impl UserData {
-    fn send(&self, surface: Surface, event: Event) {
+    fn send(&self, event: Event) {
         let event_loop = EventLoop {
-            surface,
+            surface: self.surface.get(),
             mouse_position: self.mouse_position.get(),
+            mouse_buttons: self.mouse_buttons.get(),
         };
         let mut callback = self.event_callback.borrow_mut();
         let control_flow = callback(event_loop, event);
         self.control_flow.set(control_flow);
+    }
+
+    fn on_button(&self, wparam: WPARAM, button: MouseButtons, state: KeyState) {
+        self.mouse_buttons.set({
+            let mut buttons = MouseButtons::empty();
+            let wparam = wparam as u32;
+            if wparam & MK_LBUTTON != 0 {
+                buttons |= MouseButtons::LEFT;
+            }
+            if wparam & MK_RBUTTON != 0 {
+                buttons |= MouseButtons::RIGHT;
+            }
+            buttons
+        });
+        let modifiers = unsafe { Modifiers::query() };
+
+        self.send(Event::MouseButton {
+            button,
+            state,
+            modifiers,
+        });
     }
 }
 
 pub struct EventLoop {
     pub surface: Surface,
     pub mouse_position: Option<(i32, i32)>,
+    pub mouse_buttons: MouseButtons,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -482,9 +518,11 @@ pub struct Platform {
 impl Platform {
     pub fn new() -> Self {
         let user_data = Rc::new(UserData {
+            surface: Cell::new(Surface { hwnd: 0 }), // set during WM_NCCREATE
             control_flow: Cell::new(ControlFlow::Continue),
             event_callback: RefCell::new(Box::new(|_, _| ControlFlow::Continue)),
             mouse_position: Cell::new(None),
+            mouse_buttons: Cell::new(MouseButtons::empty()),
             keydown_area: Cell::new(HTCLIENT as WPARAM),
             u16_surrogate: Cell::new(None),
         });
@@ -514,27 +552,27 @@ impl Platform {
             let style = WS_SYSMENU | WS_SIZEBOX | WS_CAPTION | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
             let style_ex = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE | WS_EX_ACCEPTFILES;
 
-            let user_data = user_data.clone();
+            let hwnd = {
+                let user_data = user_data.clone();
+                CreateWindowExW(
+                    style_ex,
+                    class_name.as_ptr(),
+                    title.as_ptr(),
+                    style,
+                    CW_USEDEFAULT,
+                    CW_USEDEFAULT,
+                    CW_USEDEFAULT,
+                    CW_USEDEFAULT,
+                    0,
+                    0,
+                    hinstance,
+                    Rc::as_ptr(&user_data) as _,
+                )
+            };
 
-            let hwnd = CreateWindowExW(
-                style_ex,
-                class_name.as_ptr(),
-                title.as_ptr(),
-                style,
-                CW_USEDEFAULT,
-                CW_USEDEFAULT,
-                CW_USEDEFAULT,
-                CW_USEDEFAULT,
-                0,
-                0,
-                hinstance,
-                Rc::as_ptr(&user_data) as _,
-            );
+            let surface = Surface { hwnd };
 
-            Platform {
-                surface: Surface { hwnd },
-                user_data,
-            }
+            Platform { surface, user_data }
         }
     }
 

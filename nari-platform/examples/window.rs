@@ -145,8 +145,12 @@ fn main() -> anyhow::Result<()> {
 
                     event_loop.surface.redraw();
                 }
-                Event::MouseButton { buttons, modifiers } => {
-                    dbg!(buttons, modifiers);
+                Event::MouseButton {
+                    button,
+                    state,
+                    modifiers,
+                } => {
+                    dbg!((button, state, modifiers, event_loop.mouse_buttons));
                 }
                 Event::MouseMove => {}
                 Event::Char(c) => {

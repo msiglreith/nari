@@ -13,7 +13,7 @@ zeno = "0.2"
 bytemuck = { version = "1", features = ["derive"] }
 libc = "0.2"
 unicode-segmentation = "1.9"
-swash = { path = "../../swash" }
+swash = { git = "https://github.com/msiglreith/swash.git", branch = "nari" }
 
 [dev-dependencies]
 anyhow = "1"
