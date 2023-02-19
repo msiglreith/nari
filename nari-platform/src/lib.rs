@@ -443,11 +443,14 @@ impl UserData {
 
     fn on_key(&self, wparam: WPARAM, state: KeyState) {
         let c = unsafe { MapVirtualKeyW(wparam as u32, MAPVK_VK_TO_CHAR) };
+
         if c == 0 {
+            // todo: support other keys as well
             return;
         }
 
-        if let Some(key) = char::from_u32(c) {
+        const DEAD_KEY_FLAG: u32 = 1 << 31;
+        if let Some(key) = char::from_u32(c & !DEAD_KEY_FLAG) {
             let modifiers = unsafe { Modifiers::query() };
             self.send(Event::Key {
                 key,
