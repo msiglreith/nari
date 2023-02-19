@@ -24,6 +24,6 @@ features = [
 ]
 
 [dev-dependencies]
-nari-gpu = { path = "../nari-gpu" }
-nari-canvas = { path = "../nari-canvas" }
+nari-gpu.workspace = true
+nari-canvas.workspace = true
 anyhow = "1"

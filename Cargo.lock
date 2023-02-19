@@ -665,7 +665,6 @@ dependencies = [
  "nari-canvas",
  "nari-gpu",
  "unicode-segmentation",
- "windows-sys 0.42.0",
  "winit",
 ]
 
