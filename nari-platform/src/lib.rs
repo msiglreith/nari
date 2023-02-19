@@ -24,8 +24,8 @@ use windows_sys::Win32::{
     UI::{
         Controls::{HOVER_DEFAULT, MARGINS, WM_MOUSELEAVE},
         Input::KeyboardAndMouse::{
-            GetKeyState, TrackMouseEvent, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, VK_CONTROL,
-            VK_MENU, VK_SHIFT,
+            GetKeyState, ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE, TME_NONCLIENT,
+            TRACKMOUSEEVENT, VK_CONTROL, VK_MENU, VK_SHIFT,
         },
         WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
@@ -434,7 +434,7 @@ impl UserData {
     }
 
     fn on_button(&self, wparam: WPARAM, button: MouseButtons, state: KeyState) {
-        self.mouse_buttons.set({
+        let buttons = {
             let mut buttons = MouseButtons::empty();
             let wparam = wparam as u32;
             if wparam & MK_LBUTTON != 0 {
@@ -444,7 +444,21 @@ impl UserData {
                 buttons |= MouseButtons::RIGHT;
             }
             buttons
-        });
+        };
+        self.mouse_buttons.set(buttons);
+
+        // Mouse capture logic, required that we receive mouse events
+        // once we leave the window.
+        match (state, buttons.bits().count_ones()) {
+            (KeyState::Down, 1) => unsafe {
+                SetCapture(self.surface.get().hwnd);
+            },
+            (KeyState::Up, 0) => unsafe {
+                ReleaseCapture();
+            },
+            _ => (),
+        }
+
         let modifiers = unsafe { Modifiers::query() };
 
         self.send(Event::MouseButton {
