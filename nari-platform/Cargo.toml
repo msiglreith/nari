@@ -9,7 +9,6 @@ workspace = ".."
 [dependencies]
 raw-window-handle = "0.5"
 bitflags = "1"
-keyboard-types = "0.6"
 
 [target.'cfg(target_os = "windows")'.dependencies.windows-sys]
 version = "0.45"

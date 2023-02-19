@@ -152,6 +152,11 @@ fn main() -> anyhow::Result<()> {
                 } => {
                     dbg!((button, state, modifiers, event_loop.mouse_buttons));
                 }
+                Event::Key {
+                    key, state, modifiers
+                } => {
+                    dbg!((key, state, modifiers));
+                }
                 Event::MouseMove => {}
                 Event::Char(c) => {
                     println!("{:?}", c);

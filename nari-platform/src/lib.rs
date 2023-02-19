@@ -25,7 +25,7 @@ use windows_sys::Win32::{
         Controls::{HOVER_DEFAULT, MARGINS, WM_MOUSELEAVE},
         Input::KeyboardAndMouse::{
             GetKeyState, ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE, TME_NONCLIENT,
-            TRACKMOUSEEVENT, VK_CONTROL, VK_MENU, VK_SHIFT,
+            TRACKMOUSEEVENT, VK_CONTROL, VK_MENU, VK_SHIFT, MAPVK_VK_TO_CHAR, MapVirtualKeyW
         },
         WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
@@ -43,8 +43,6 @@ use windows_sys::Win32::{
         },
     },
 };
-
-pub use keyboard_types::KeyState;
 
 fn encode_wide(string: impl AsRef<OsStr>) -> Vec<u16> {
     string.as_ref().encode_wide().chain(once(0)).collect()
@@ -75,17 +73,17 @@ unsafe extern "system" fn window_proc(
 ) -> LRESULT {
     let surface = Surface { hwnd: window };
 
-    match msg {
-        WM_NCCREATE => println!("WM_NCCREATE"),
-        WM_NCCALCSIZE => println!("WM_NCCALCSIZE"),
-        WM_CREATE => println!("WM_CREATE"),
-        WM_MOUSEMOVE => println!("WM_MOUSEMOVE"),
-        WM_NCMOUSEMOVE => println!("WM_NCMOUSEMOVE"),
-        WM_MOUSELEAVE => println!("WM_MOUSELEAVE"),
-        WM_NCMOUSELEAVE => println!("WM_NCMOUSELEAVE"),
-        WM_PAINT => println!("WM_PAINT"),
-        _ => (), // println!("{}", msg),
-    }
+    // match msg {
+    //     WM_NCCREATE => println!("WM_NCCREATE"),
+    //     WM_NCCALCSIZE => println!("WM_NCCALCSIZE"),
+    //     WM_CREATE => println!("WM_CREATE"),
+    //     WM_MOUSEMOVE => println!("WM_MOUSEMOVE"),
+    //     WM_NCMOUSEMOVE => println!("WM_NCMOUSEMOVE"),
+    //     WM_MOUSELEAVE => println!("WM_MOUSELEAVE"),
+    //     WM_NCMOUSELEAVE => println!("WM_NCMOUSELEAVE"),
+    //     WM_PAINT => println!("WM_PAINT"),
+    //     _ => (), // println!("{}", msg),
+    // }
 
     let user_data = {
         let ptr = GetWindowLongPtrW(window, GWL_USERDATA) as *mut UserData;
@@ -232,14 +230,12 @@ unsafe extern "system" fn window_proc(
         }
 
         WM_KEYDOWN => {
-            println!("KEYDOWN {} {}", wparam, lparam);
-
+            user_data.on_key(wparam, KeyState::Down);
             0
         }
 
         WM_KEYUP => {
-            println!("KEYUP {} {}", wparam, lparam);
-
+            user_data.on_key(wparam, KeyState::Up);
             0
         }
 
@@ -389,10 +385,22 @@ impl Modifiers {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum KeyState {
+    Down,
+    Up,
+}
+
 pub enum Event<'a> {
     Paint,
     Resize(Extent),
 
+    // Should be only used for hotkey like semantics.
+    Key {
+        key: char,
+        state: KeyState,
+        modifiers: Modifiers,
+    },
     MouseButton {
         button: MouseButtons,
         state: KeyState,
@@ -431,6 +439,22 @@ impl UserData {
         let mut callback = self.event_callback.borrow_mut();
         let control_flow = callback(event_loop, event);
         self.control_flow.set(control_flow);
+    }
+
+    fn on_key(&self, wparam: WPARAM, state: KeyState) {
+        let c = unsafe { MapVirtualKeyW(wparam as u32, MAPVK_VK_TO_CHAR) };
+        if c == 0 {
+            return;
+        }
+
+        if let Some(key) = char::from_u32(c) {
+            let modifiers = unsafe { Modifiers::query() };
+            self.send(Event::Key {
+                key,
+                state,
+                modifiers,
+            });
+        }
     }
 
     fn on_button(&self, wparam: WPARAM, button: MouseButtons, state: KeyState) {
