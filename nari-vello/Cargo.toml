@@ -1,0 +1,21 @@
+[package]
+name = "nari-vello"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+vello = { path = "../../vello" }
+nari-freetype.workspace = true
+bytemuck = { version = "1", features = ["derive"] }
+libc = "0.2"
+unicode-segmentation = "1.9"
+swash = { git = "https://github.com/msiglreith/swash.git", branch = "nari" }
+
+[dev-dependencies]
+nari-platform.workspace = true
+anyhow = "1"
+pollster = "0.2"
+wgpu = "0.15"
+superluminal-perf.workspace = true

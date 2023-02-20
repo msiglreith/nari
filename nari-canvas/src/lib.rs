@@ -140,7 +140,7 @@ impl Scene {
             };
 
             let vertices = [v00, v01, v11, v11, v10, v00];
-            self.vertices.extend(vertices);
+            self.vertices.extend_from_slice(&vertices);
         }
 
         for mask_tile in &tiles.mask {
@@ -192,7 +192,7 @@ impl Scene {
             };
 
             let vertices = [v00, v01, v11, v11, v10, v00];
-            self.vertices.extend(vertices);
+            self.vertices.extend_from_slice(&vertices);
         }
     }
 
@@ -223,7 +223,7 @@ impl Scene {
         };
 
         let vertices = [v00, v01, v11, v11, v10, v00];
-        self.vertices.extend(vertices);
+        self.vertices.extend_from_slice(&vertices);
     }
 }
 
@@ -343,7 +343,7 @@ impl Canvas {
         let tiles = self
             .glyph_cache
             .get(&(font.size, key))
-            .expect(&format!("missing {:?}", (font.size, key)));
+            .expect("missing glyph entry");
 
         self.scene
             .path_flip(tiles, &self.atlas, x, y, color, false, false);
@@ -454,7 +454,7 @@ impl Canvas {
                 let tiles = self
                     .glyph_cache
                     .get(&(text_run.font.size, key))
-                    .expect(&format!("missing {:?}", (text_run.font.size, key)));
+                    .expect("missing glyph entry");
                 let advance = px + glyph.offset.trunc().i32();
 
                 for solid_tile in &tiles.solid {
@@ -489,7 +489,7 @@ impl Canvas {
                     };
 
                     let vertices = [v00, v01, v11, v11, v10, v00];
-                    self.scene.vertices.extend(vertices);
+                    self.scene.vertices.extend_from_slice(&vertices);
                 }
 
                 for mask_tile in &tiles.mask {
@@ -536,7 +536,7 @@ impl Canvas {
                     };
 
                     let vertices = [v00, v01, v11, v11, v10, v00];
-                    self.scene.vertices.extend(vertices);
+                    self.scene.vertices.extend_from_slice(&vertices);
                 }
             }
         }

@@ -7,6 +7,7 @@ members = [
     "nari-canvas",
     "nari-platform",
     "nari-studio",
+    "nari-vello",
 ]
 
 [workspace.dependencies]
@@ -14,3 +15,11 @@ nari-canvas = { path = "nari-canvas" }
 nari-gpu = { path = "nari-gpu" }
 nari-ochre = { path = "nari-ochre" }
 nari-freetype = { path = "nari-freetype" }
+nari-platform = { path = "nari-platform" }
+superluminal-perf = "0.2"
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1

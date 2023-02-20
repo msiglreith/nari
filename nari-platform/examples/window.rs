@@ -1,7 +1,7 @@
 use nari_canvas as canvas;
 use nari_gpu as gpu;
 use nari_platform::{ControlFlow, Event, Extent, Platform, SurfaceArea};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 const MARGIN: i32 = 5;
 const BACKGROUND: canvas::Color = [0.12, 0.14, 0.17, 1.0];
@@ -132,6 +132,13 @@ fn main() -> anyhow::Result<()> {
             pool: gpu::Pool::null(),
         };
 
+        let font = ui.canvas.create_font(std::fs::read("assets/segoeui.ttf")?);
+        let mut font_table = HashMap::<canvas::typo::FontSize, _>::default();
+
+        for ft in 6..25 {
+            font_table.insert(ft, ui.canvas.create_font_scaled(font, ft));
+        }
+
         let codicon = ui
             .canvas
             .create_font(std::fs::read("assets/codicon/codicon.ttf")?);
@@ -153,7 +160,9 @@ fn main() -> anyhow::Result<()> {
                     dbg!((button, state, modifiers, event_loop.mouse_buttons));
                 }
                 Event::Key {
-                    key, state, modifiers
+                    key,
+                    state,
+                    modifiers,
                 } => {
                     dbg!((key, state, modifiers));
                 }
@@ -209,6 +218,23 @@ fn main() -> anyhow::Result<()> {
                 }
                 Event::Paint => {
                     let frame = ui.begin_frame();
+
+                    let mut pen = nari_canvas::typo::Pen::default();
+                    pen.x = 20;
+                    pen.y = 20;
+                    pen.color = [1.0, 1.0, 1.0, 1.0];
+
+                    let t0 = std::time::Instant::now();
+                    for ft in 6..25 {
+                        let font = &font_table[&ft];
+                        ui.canvas.text(
+                            font_table[&ft],
+                            pen,
+                            &format!("{}: The lazy dog 0123456789", ft),
+                        );
+                        pen.y += font.properties.height as i32;
+                    }
+                    println!("{:?}", t0.elapsed());
 
                     let chrome_minimize = canvas::Rect {
                         x0: size.width.saturating_sub(3 * CLOSE_WIDTH) as _,

@@ -24,8 +24,9 @@ use windows_sys::Win32::{
     UI::{
         Controls::{HOVER_DEFAULT, MARGINS, WM_MOUSELEAVE},
         Input::KeyboardAndMouse::{
-            GetKeyState, ReleaseCapture, SetCapture, TrackMouseEvent, TME_LEAVE, TME_NONCLIENT,
-            TRACKMOUSEEVENT, VK_CONTROL, VK_MENU, VK_SHIFT, MAPVK_VK_TO_CHAR, MapVirtualKeyW
+            GetKeyState, MapVirtualKeyW, ReleaseCapture, SetCapture, TrackMouseEvent,
+            MAPVK_VK_TO_CHAR, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, VK_CONTROL, VK_MENU,
+            VK_SHIFT,
         },
         WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,

@@ -125,9 +125,6 @@ fn main() -> anyhow::Result<()> {
             wsi.swapchain_desc.image_format,
         );
 
-        let codicon = canvas.create_font(std::fs::read("assets/codicon.ttf")?);
-        let codicon = canvas.create_font_scaled(codicon, 16);
-
         let fira_code = canvas.create_font(std::fs::read("assets/segoeui.ttf")?);
         let mut fira_code_table = HashMap::<canvas::typo::FontSize, _>::default();
 
@@ -307,16 +304,16 @@ fn main() -> anyhow::Result<()> {
                     };
                     canvas.rect(chrome_close, [0.0, 0.0, 0.0, 1.0]);
 
-                    canvas.text(
-                        codicon,
-                        canvas::typo::Pen {
-                            x: (chrome_close.x0 + chrome_close.x1) / 2,
-                            y: (chrome_close.y0 + chrome_close.y1) / 2 + 8,
-                            color: foreground,
-                            align_x: canvas::Align::Center,
-                        },
-                        canvas::Codicon::ChromeClose,
-                    );
+                    // canvas.text(
+                    //     codicon,
+                    //     canvas::typo::Pen {
+                    //         x: (chrome_close.x0 + chrome_close.x1) / 2,
+                    //         y: (chrome_close.y0 + chrome_close.y1) / 2 + 8,
+                    //         color: foreground,
+                    //         align_x: canvas::Align::Center,
+                    //     },
+                    //     canvas::Codicon::ChromeClose,
+                    // );
 
                     canvas.squircle(
                         canvas::Squircle {
