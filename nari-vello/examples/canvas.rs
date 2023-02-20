@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use vello::{
     kurbo::{Affine, Point, Rect},
     peniko::{Brush, Color, Fill},
-    Scene, SceneBuilder,
+    Scene, SceneBuilder, SceneFragment,
 };
 
 fn render_text_run(
@@ -87,6 +87,31 @@ async fn run() -> anyhow::Result<()> {
 
     let mut scene = Scene::default();
 
+    let mut waterfall = SceneFragment::default();
+    {
+        let mut sb = SceneBuilder::for_fragment(&mut waterfall);
+        let mut py = 0.0;
+
+        for ft in 6..25 {
+            let font = &font_table[&ft];
+            let text_run = engine.build_text_run(
+                *font,
+                &format!("{}: The lazy dog 0123456789", ft),
+                &mut glyph_cache,
+            );
+            render_text_run(
+                &mut sb,
+                &text_run,
+                Affine::translate((0.0, py as _)),
+                nari_vello::Align::Positive,
+                vello::peniko::Brush::Solid(Color::rgb(1.0, 1.0, 1.0)),
+                &glyph_cache,
+            );
+            py += font.properties.height;
+        }
+        sb.finish();
+    }
+
     platform.run(move |event_loop, event| {
         match event {
             Event::Resize(extent) => {
@@ -141,27 +166,7 @@ async fn run() -> anyhow::Result<()> {
                     None,
                     &rect,
                 );
-
-                let px = 20;
-                let mut py = 20;
-
-                for ft in 6..25 {
-                    let font = &font_table[&ft];
-                    let text_run = engine.build_text_run(
-                        *font,
-                        &format!("{}: The lazy dog 0123456789", ft),
-                        &mut glyph_cache,
-                    );
-                    render_text_run(
-                        &mut sb,
-                        &text_run,
-                        Affine::translate((px as _, py as _)),
-                        nari_vello::Align::Positive,
-                        vello::peniko::Brush::Solid(Color::rgb(1.0, 1.0, 1.0)),
-                        &glyph_cache,
-                    );
-                    py += font.properties.height as i32;
-                }
+                sb.append(&waterfall, Some(Affine::translate((20.0, 20.0))));
 
                 sb.finish();
                 // std::thread::sleep(std::time::Duration::from_millis(10));

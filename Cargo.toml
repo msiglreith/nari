@@ -16,7 +16,10 @@ nari-gpu = { path = "nari-gpu" }
 nari-ochre = { path = "nari-ochre" }
 nari-freetype = { path = "nari-freetype" }
 nari-platform = { path = "nari-platform" }
+
 superluminal-perf = "0.2"
+vello = { git = "https://github.com/msiglreith/vello.git", branch = "nari" }
+swash = { git = "https://github.com/msiglreith/swash.git", branch = "nari" }
 
 [profile.dev.package."*"]
 opt-level = 3
