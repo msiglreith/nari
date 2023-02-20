@@ -934,6 +934,7 @@ dependencies = [
  "nari-freetype",
  "nari-platform",
  "pollster",
+ "raw-window-handle",
  "superluminal-perf",
  "swash",
  "unicode-segmentation",

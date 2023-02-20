@@ -8,14 +8,15 @@ edition = "2021"
 [dependencies]
 vello.workspace = true
 nari-freetype.workspace = true
+nari-platform.workspace = true
 bytemuck = { version = "1", features = ["derive"] }
 libc = "0.2"
 unicode-segmentation = "1.9"
 swash.workspace = true
+wgpu = "0.15"
+raw-window-handle.workspace = true
 
 [dev-dependencies]
-nari-platform.workspace = true
 anyhow = "1"
 pollster = "0.2"
-wgpu = "0.15"
 superluminal-perf.workspace = true
