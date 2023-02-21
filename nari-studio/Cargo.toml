@@ -6,9 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nari-gpu.workspace = true
-nari-canvas.workspace = true
-
 unicode-segmentation = "1.9"
 
 anyhow = "1"

@@ -2,9 +2,6 @@
 resolver = "2"
 members = [
     "nari-freetype",
-    "nari-gpu",
-    "nari-ochre",
-    "nari-canvas",
     "nari-platform",
     "nari-studio",
     "nari-vello",

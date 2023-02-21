@@ -8,6 +8,9 @@ use vello::{
 };
 
 async fn run() -> anyhow::Result<()> {
+    let foreground: Color = Color::rgb(0.12, 0.14, 0.17);
+    let background: Color = Color::rgb(1.0, 1.0, 1.0);
+
     let platform = Platform::new();
 
     let mut canvas = Canvas::new(platform.surface).await;
@@ -34,7 +37,7 @@ async fn run() -> anyhow::Result<()> {
                 &text_run,
                 Affine::translate((0.0, py as _)),
                 nari_vello::Align::Positive,
-                vello::peniko::Brush::Solid(Color::rgb(1.0, 1.0, 1.0)),
+                vello::peniko::Brush::Solid(background),
             );
             py += font.properties.height;
         }
@@ -89,7 +92,7 @@ async fn run() -> anyhow::Result<()> {
                 sb.fill(
                     Fill::NonZero,
                     Affine::IDENTITY,
-                    &Brush::Solid(Color::rgb(0.12, 0.14, 0.17)),
+                    &Brush::Solid(foreground),
                     None,
                     &rect,
                 );
