@@ -1,17 +1,19 @@
+mod codicon;
 mod engine;
 mod fxp;
+
 pub mod typo;
+pub use self::codicon::Codicon;
+pub use vello::*;
 
-pub use self::engine::Engine;
-use self::typo::{Font, FontScaled, FontSize, GlyphCache, GlyphKey, TextRun};
-
-use nari_platform::{Extent, Surface};
-use std::pin::Pin;
-use vello::{
+use self::{
+    engine::Engine,
     kurbo::Affine,
     peniko::{Brush, Fill},
-    Scene, SceneBuilder,
+    typo::{Font, FontScaled, FontSize, GlyphCache, GlyphKey, TextRun},
 };
+use nari_platform::{Extent, Surface};
+use std::pin::Pin;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Align {
@@ -151,5 +153,32 @@ impl Canvas {
                 );
             }
         }
+    }
+
+    pub fn glyph_extent<C: Into<char>>(&mut self, font: FontScaled, c: C) -> kurbo::Rect {
+        self.engine.glyph_extent(font, c.into())
+    }
+
+    pub fn glyph<C: Into<char>>(
+        &mut self,
+        sb: &mut SceneBuilder,
+        font: typo::FontScaled,
+        c: C,
+        affine: Affine,
+        brush: &Brush,
+    ) {
+        let glyph = self
+            .engine
+            .build_glyph(font, c.into(), &mut self.glyph_cache);
+        let key = typo::GlyphKey {
+            id: glyph.id,
+            offset: glyph.offset,
+        };
+        let path = self
+            .glyph_cache
+            .get(&(font.size, key))
+            .expect("missing glyph entry");
+
+        sb.fill(Fill::NonZero, affine, brush, None, &path);
     }
 }

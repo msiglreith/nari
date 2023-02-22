@@ -1,20 +1,24 @@
 use nari_platform::{ControlFlow, Event, Platform, SurfaceArea};
-use nari_vello::Canvas;
-use std::collections::HashMap;
-use vello::{
+use nari_vello::{
     kurbo::{Affine, Point, Rect},
     peniko::{Brush, Color, Fill},
-    Scene, SceneBuilder, SceneFragment,
+    Canvas, Codicon, Scene, SceneBuilder, SceneFragment,
 };
+use std::collections::HashMap;
+
+const CAPTION_HEIGHT: i32 = 28;
+const CLOSE_WIDTH: u32 = 46;
 
 async fn run() -> anyhow::Result<()> {
-    let foreground: Color = Color::rgb(0.12, 0.14, 0.17);
-    let background: Color = Color::rgb(1.0, 1.0, 1.0);
+    let background: Color = Color::rgb(0.12, 0.14, 0.17);
+    let foreground: Color = Color::rgb(1.0, 1.0, 1.0);
 
     let platform = Platform::new();
 
     let mut canvas = Canvas::new(platform.surface).await;
 
+    let codicon = canvas.create_font(std::fs::read("assets/codicon/codicon.ttf")?);
+    let codicon = canvas.create_font_scaled(codicon, 16);
     let font = canvas.create_font(std::fs::read("assets/segoeui.ttf")?);
     let mut font_table = HashMap::<nari_vello::typo::FontSize, _>::default();
 
@@ -37,7 +41,7 @@ async fn run() -> anyhow::Result<()> {
                 &text_run,
                 Affine::translate((0.0, py as _)),
                 nari_vello::Align::Positive,
-                vello::peniko::Brush::Solid(background),
+                vello::peniko::Brush::Solid(foreground),
             );
             py += font.properties.height;
         }
@@ -92,11 +96,51 @@ async fn run() -> anyhow::Result<()> {
                 sb.fill(
                     Fill::NonZero,
                     Affine::IDENTITY,
-                    &Brush::Solid(foreground),
+                    &Brush::Solid(background),
                     None,
                     &rect,
                 );
                 sb.append(&waterfall, Some(Affine::translate((20.0, 20.0))));
+
+                let chrome_minimize = Rect {
+                    x0: size.width.saturating_sub(3 * CLOSE_WIDTH) as _,
+                    x1: size.width.saturating_sub(2 * CLOSE_WIDTH) as _,
+                    y0: 0.0,
+                    y1: CAPTION_HEIGHT as _,
+                };
+                let affine_minimize = Affine::translate(
+                    chrome_minimize.center()
+                        - canvas
+                            .glyph_extent(codicon, Codicon::ChromeMinimize)
+                            .center(),
+                );
+                canvas.glyph(
+                    &mut sb,
+                    codicon,
+                    Codicon::ChromeMinimize,
+                    affine_minimize,
+                    &Brush::Solid(foreground),
+                );
+
+                let chrome_maximize = Rect {
+                    x0: size.width.saturating_sub(2 * CLOSE_WIDTH) as _,
+                    x1: size.width.saturating_sub(CLOSE_WIDTH) as _,
+                    y0: 0.0,
+                    y1: CAPTION_HEIGHT as _,
+                };
+                let affine_maximize = Affine::translate(
+                    chrome_maximize.center()
+                        - canvas
+                            .glyph_extent(codicon, Codicon::ChromeMaximize)
+                            .center(),
+                );
+                canvas.glyph(
+                    &mut sb,
+                    codicon,
+                    Codicon::ChromeMaximize,
+                    affine_maximize,
+                    &Brush::Solid(foreground),
+                );
 
                 sb.finish();
                 superluminal_perf::end_event();

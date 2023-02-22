@@ -116,7 +116,7 @@ impl Engine {
         &mut self.fonts[id]
     }
 
-    pub fn char_extent(&mut self, font: FontScaled, c: char) -> Rect {
+    pub fn glyph_extent(&mut self, font: FontScaled, c: char) -> Rect {
         let font_ref = self.font(font.font);
         font_ref.scale(font.size);
 
