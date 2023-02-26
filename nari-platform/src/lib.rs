@@ -99,10 +99,10 @@ unsafe extern "system" fn window_proc(
 
                     // add window shadow effect
                     let margins = MARGINS {
-                        cxLeftWidth: 0,
-                        cxRightWidth: 0,
+                        cxLeftWidth: 1,
+                        cxRightWidth: 1,
                         cyTopHeight: 1,
-                        cyBottomHeight: 0,
+                        cyBottomHeight: 1,
                     };
                     DwmExtendFrameIntoClientArea(window, &margins);
                 }
