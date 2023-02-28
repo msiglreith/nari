@@ -1,9 +1,27 @@
+use std::collections::VecDeque;
+
 use nari_platform::{ControlFlow, Event, Extent, Platform, SurfaceArea};
 use nari_vello::{
     kurbo::{Point, QuadBez, Rect, Vec2},
     peniko::Color,
 };
 use softbuffer::GraphicsContext;
+
+const SUBDIVISION: usize = 7;
+const SAMPLES: usize = SUBDIVISION + 1;
+struct CoarseTile {
+    // origin
+    tx: usize,
+    ty: usize,
+
+    // resolution
+    dx: usize,
+    dy: usize,
+
+    tape: Vec<QuadBez>,
+}
+
+struct FineTile {}
 
 pub fn rgb(r: f64, g: f64, b: f64) -> u32 {
     let r = (255.0 * r.clamp(0.0, 1.0)) as u32;
@@ -73,25 +91,59 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
         p2: Point::new(600.0, 400.0),
     };
 
-    let background = rgb(1.0, 1.0, 1.0);
+    let background = rgb(0.0, 0.0, 0.0);
     let foreground = rgb(0.0, 0.0, 0.0);
+
+    let mut coarse_tiles = VecDeque::default();
+    coarse_tiles.push_back(CoarseTile {
+        tx: 0,
+        ty: 0,
+        dx: 200,
+        dy: 200,
+        tape: vec![q0, q1, q2, q3],
+    });
+
+    while let Some(tile) = coarse_tiles.pop_front() {
+        for segment in &tile.tape {}
+    }
 
     for y in 0..height {
         for x in 0..width {
-            let p = Point::new(x as _, y as _);
             let index = (y * width + x) as usize;
 
             framebuffer[index] = background;
 
-            for quad in [q0, q1, q2, q3] {
-                let winding = quad_winding(quad, p);
-                if winding == 1 {
-                    framebuffer[index] = rgb(0.0, 1.0, 0.0);
-                } else if winding == -1 {
-                    framebuffer[index] = rgb(1.0, 0.0, 0.0);
-                } else if winding == 2 {
-                    framebuffer[index] = rgb(0.0, 0.0, 1.0);
+            let mut coverage = 0.0;
+
+            for sy in 0..SAMPLES {
+                for sx in 0..SAMPLES {
+                    let p = Point::new(
+                        x as f64 + sx as f64 / (SAMPLES + 1) as f64,
+                        y as f64 + sy as f64 / (SAMPLES + 1) as f64,
+                    );
+
+                    let mut winding = 0;
+
+                    for quad in [q0, q1, q2, q3] {
+                        winding += quad_winding(quad, p);
+                        // if winding == 1 {
+                        //     framebuffer[index] = rgb(0.0, 1.0, 0.0);
+                        // } else if winding == -1 {
+                        //     framebuffer[index] = rgb(1.0, 0.0, 0.0);
+                        // }
+                        // } else if winding == 2 {
+                        //     framebuffer[index] = rgb(0.0, 0.0, 1.0);
+                        // }
+                    }
+
+                    coverage += winding as f64 / (SAMPLES * SAMPLES) as f64;
                 }
+            }
+
+            if coverage > 0.0 {
+                framebuffer[index] = rgb(0.0, coverage, 0.0);
+            } else if coverage < 0.0 {
+                framebuffer[index] = rgb(-coverage, 0.0, 0.0);
             }
         }
     }
