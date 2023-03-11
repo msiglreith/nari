@@ -2,13 +2,16 @@ use std::collections::VecDeque;
 
 use nari_platform::{ControlFlow, Event, Extent, Platform, SurfaceArea};
 use nari_vello::{
-    kurbo::{Point, QuadBez, Rect, Vec2},
+    kurbo::{BezPath, Line, PathEl, PathSeg, Point, QuadBez, Rect, Vec2},
     peniko::Color,
 };
 use softbuffer::GraphicsContext;
 
 const SUBDIVISION: usize = 7;
-const SAMPLES: usize = SUBDIVISION + 1;
+const SAMPLES: usize = 4;
+
+type Path = Vec<PathSeg>;
+
 struct CoarseTile {
     // origin
     tx: usize,
@@ -16,7 +19,7 @@ struct CoarseTile {
 
     level: usize,
 
-    tape: Vec<QuadBez>,
+    tape: Vec<Path>,
 }
 
 struct FineTile {}
@@ -67,6 +70,16 @@ fn div_align_up(x: u32, y: u32) -> u32 {
     (x + y - 1) / y
 }
 
+fn make_diamond(cx: f64, cy: f64, size: f64) -> [PathEl; 5] {
+    [
+        PathEl::MoveTo(Point::new(cx, cy - size)),
+        PathEl::LineTo(Point::new(cx + size, cy)),
+        PathEl::LineTo(Point::new(cx, cy + size)),
+        PathEl::LineTo(Point::new(cx - size, cy)),
+        PathEl::ClosePath,
+    ]
+}
+
 fn draw(width: u32, height: u32) -> Vec<u32> {
     let mut framebuffer = vec![0u32; (width * height) as usize];
 
@@ -91,6 +104,10 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
         p2: Point::new(600.0, 400.0),
     };
 
+    let paths = vec![BezPath::from_vec(make_diamond(200.0, 150.0, 70.0).to_vec())
+        .segments()
+        .collect::<Vec<_>>()];
+
     // clearing
     for y in 0..height {
         for x in 0..width {
@@ -99,38 +116,38 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
         }
     }
 
-    let mut coarse_tiles = VecDeque::default();
-    coarse_tiles.push_back(CoarseTile {
-        tx: 0,
-        ty: 0,
-        level: 4,
-        tape: vec![q0, q1, q2, q3],
-    });
+    // let mut coarse_tiles = VecDeque::default();
+    // coarse_tiles.push_back(CoarseTile {
+    //     tx: 0,
+    //     ty: 0,
+    //     level: 4,
+    //     tape: vec![q0, q1, q2, q3],
+    // });
 
-    while let Some(tile) = coarse_tiles.pop_front() {
-        let dx = SUBDIVISION.pow(tile.level as u32 - 1);
-        let tile_size = SUBDIVISION.pow(tile.level as u32);
-        let x0 = tile.tx * tile_size;
-        let y0 = tile.ty * tile_size;
+    // while let Some(tile) = coarse_tiles.pop_front() {
+    //     let dx = SUBDIVISION.pow(tile.level as u32 - 1);
+    //     let tile_size = SUBDIVISION.pow(tile.level as u32);
+    //     let x0 = tile.tx * tile_size;
+    //     let y0 = tile.ty * tile_size;
 
-        let mut winding = [[0; SAMPLES]; SAMPLES];
+    //     let mut winding = [[0; SAMPLES]; SAMPLES];
 
-        for sy in 0..SAMPLES {
-            for sx in 0..SAMPLES {
-                let mut subtile = CoarseTile {
-                    tx: tile.tx * SUBDIVISION + sx,
-                    ty: tile.ty * SUBDIVISION + sy,
-                    level: tile.level - 1,
-                    tape: Vec::default(),
-                };
-                let p = Point::new((x0 + sx * dx) as f64, (y0 + sy * dx) as f64);
-                for segment in &tile.tape {
-                    let local = quad_winding(*segment, p);
-                    winding[sy as usize][sx as usize] += quad_winding(*segment, p);
-                }
-            }
-        }
-    }
+    //     for sy in 0..SAMPLES {
+    //         for sx in 0..SAMPLES {
+    //             let mut subtile = CoarseTile {
+    //                 tx: tile.tx * SUBDIVISION + sx,
+    //                 ty: tile.ty * SUBDIVISION + sy,
+    //                 level: tile.level - 1,
+    //                 tape: Vec::default(),
+    //             };
+    //             let p = Point::new((x0 + sx * dx) as f64, (y0 + sy * dx) as f64);
+    //             for segment in &tile.tape {
+    //                 let local = quad_winding(*segment, p);
+    //                 winding[sy as usize][sx as usize] += quad_winding(*segment, p);
+    //             }
+    //         }
+    //     }
+    // }
 
     for y in 0..height {
         for x in 0..width {
@@ -147,19 +164,40 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
                         y as f64 + sy as f64 / (SAMPLES + 1) as f64,
                     );
 
-                    let mut winding = 0;
+                    for path in &paths {
+                        let mut winding = 0;
 
-                    for quad in [q0, q1, q2, q3] {
-                        // artifical clipping
-                        let bbox = Rect::from_points(quad.p0, quad.p2);
-                        if !bbox.contains(p) {
-                            continue;
+                        for segment in path {
+                            match segment.clone() {
+                                PathSeg::Line(Line { p0, p1 }) => {
+                                    let y_min = p0.y.min(p1.y);
+                                    let y_max = p0.y.max(p1.y);
+
+                                    if p.y < y_min || p.y > y_max {
+                                        // no covering of point sample
+                                        continue;
+                                    }
+
+                                    // orientation
+                                    let dy = p1.y - p0.y;
+                                    let w = if dy > 0.0 { 1 } else { -1 };
+
+                                    let p0p1 = p1 - p0;
+                                    let p0p = p - p0;
+
+                                    let wp = p0p1.cross(p0p);
+
+                                    let is_left = wp * dy >= 0.0;
+                                    if is_left {
+                                        winding += w;
+                                    }
+                                }
+                                _ => unimplemented!(),
+                            }
                         }
 
-                        winding += quad_winding(quad, p);
+                        coverage += winding as f64 / (SAMPLES * SAMPLES) as f64;
                     }
-
-                    coverage += winding as f64 / (SAMPLES * SAMPLES) as f64;
                 }
             }
 
