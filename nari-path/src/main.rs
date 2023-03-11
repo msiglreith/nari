@@ -14,9 +14,7 @@ struct CoarseTile {
     tx: usize,
     ty: usize,
 
-    // resolution
-    dx: usize,
-    dy: usize,
+    level: usize,
 
     tape: Vec<QuadBez>,
 }
@@ -32,7 +30,9 @@ pub fn rgb(r: f64, g: f64, b: f64) -> u32 {
 }
 
 fn quad_winding(q: QuadBez, p: Point) -> isize {
-    let bbox = Rect::from_points(q.p0, q.p2);
+    if p.y < q.p0.y.min(q.p2.y) || p.y > q.p0.y.max(q.p2.y) {
+        return 0;
+    }
 
     let p0p1 = q.p1 - q.p0;
     let p0p2 = q.p2 - q.p0;
@@ -48,10 +48,6 @@ fn quad_winding(q: QuadBez, p: Point) -> isize {
     let dy = q.p2.y - q.p0.y;
     let w = if dy > 0.0 { -1 } else { 1 };
 
-    if !bbox.contains(p) {
-        return 0;
-    }
-
     // p1 and sample different side of p0p1
     let skip_check = wp * w1 < 0.0;
     if skip_check {
@@ -65,6 +61,10 @@ fn quad_winding(q: QuadBez, p: Point) -> isize {
     } else {
         0
     }
+}
+
+fn div_align_up(x: u32, y: u32) -> u32 {
+    (x + y - 1) / y
 }
 
 fn draw(width: u32, height: u32) -> Vec<u32> {
@@ -91,27 +91,52 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
         p2: Point::new(600.0, 400.0),
     };
 
-    let background = rgb(0.0, 0.0, 0.0);
-    let foreground = rgb(0.0, 0.0, 0.0);
+    // clearing
+    for y in 0..height {
+        for x in 0..width {
+            let index = (y * width + x) as usize;
+            framebuffer[index] = rgb(1.0, 1.0, 1.0);
+        }
+    }
 
     let mut coarse_tiles = VecDeque::default();
     coarse_tiles.push_back(CoarseTile {
         tx: 0,
         ty: 0,
-        dx: 200,
-        dy: 200,
+        level: 4,
         tape: vec![q0, q1, q2, q3],
     });
 
     while let Some(tile) = coarse_tiles.pop_front() {
-        for segment in &tile.tape {}
+        let dx = SUBDIVISION.pow(tile.level as u32 - 1);
+        let tile_size = SUBDIVISION.pow(tile.level as u32);
+        let x0 = tile.tx * tile_size;
+        let y0 = tile.ty * tile_size;
+
+        let mut winding = [[0; SAMPLES]; SAMPLES];
+
+        for sy in 0..SAMPLES {
+            for sx in 0..SAMPLES {
+                let mut subtile = CoarseTile {
+                    tx: tile.tx * SUBDIVISION + sx,
+                    ty: tile.ty * SUBDIVISION + sy,
+                    level: tile.level - 1,
+                    tape: Vec::default(),
+                };
+                let p = Point::new((x0 + sx * dx) as f64, (y0 + sy * dx) as f64);
+                for segment in &tile.tape {
+                    let local = quad_winding(*segment, p);
+                    winding[sy as usize][sx as usize] += quad_winding(*segment, p);
+                }
+            }
+        }
     }
 
     for y in 0..height {
         for x in 0..width {
             let index = (y * width + x) as usize;
 
-            framebuffer[index] = background;
+            framebuffer[index] = rgb(0.0, 0.0, 0.0);
 
             let mut coverage = 0.0;
 
@@ -125,15 +150,13 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
                     let mut winding = 0;
 
                     for quad in [q0, q1, q2, q3] {
+                        // artifical clipping
+                        let bbox = Rect::from_points(quad.p0, quad.p2);
+                        if !bbox.contains(p) {
+                            continue;
+                        }
+
                         winding += quad_winding(quad, p);
-                        // if winding == 1 {
-                        //     framebuffer[index] = rgb(0.0, 1.0, 0.0);
-                        // } else if winding == -1 {
-                        //     framebuffer[index] = rgb(1.0, 0.0, 0.0);
-                        // }
-                        // } else if winding == 2 {
-                        //     framebuffer[index] = rgb(0.0, 0.0, 1.0);
-                        // }
                     }
 
                     coverage += winding as f64 / (SAMPLES * SAMPLES) as f64;
