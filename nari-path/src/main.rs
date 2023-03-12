@@ -151,11 +151,24 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
                 }
 
                 let mut new_tape = Vec::default();
-                let p0 = Point::new(x as f64, y as f64);
+                let p = Point::new(x as f64, y as f64);
                 for path in &tile.tape {
                     let mut new_path = Vec::default();
                     for segment in path {
-                        new_path.push(*segment);
+                        match segment.clone() {
+                            PathSeg::Line(Line { p0, p1 }) => {
+                                let y_min = p0.y.min(p1.y);
+                                let y_max = p0.y.max(p1.y);
+
+                                if (p.y + dx as f64) < y_min || p.y > y_max {
+                                    // no covering of point sample
+                                    continue;
+                                }
+
+                                new_path.push(*segment);
+                            }
+                            _ => unimplemented!(),
+                        }
                     }
                     if new_path.is_empty() {
                         continue;
@@ -183,6 +196,8 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
             }
         }
     }
+
+    dbg!(fine_tiles.len());
 
     for tile in fine_tiles {
         let index = tile.y * width as usize + tile.x;
