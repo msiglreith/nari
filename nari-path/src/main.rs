@@ -8,9 +8,14 @@ use nari_vello::{
 use softbuffer::GraphicsContext;
 
 const SUBDIVISION: usize = 7;
+const GRID_SAMPLES: usize = SUBDIVISION + 1;
 const SAMPLES: usize = 4;
 
 type Path = Vec<PathSeg>;
+
+fn path_from_elem(elements: Vec<PathEl>) -> Path {
+    BezPath::from_vec(elements).segments().collect()
+}
 
 struct CoarseTile {
     // origin
@@ -22,7 +27,11 @@ struct CoarseTile {
     tape: Vec<Path>,
 }
 
-struct FineTile {}
+struct FineTile {
+    x: usize,
+    y: usize,
+    tape: Vec<Path>,
+}
 
 pub fn rgb(r: f64, g: f64, b: f64) -> u32 {
     let r = (255.0 * r.clamp(0.0, 1.0)) as u32;
@@ -70,14 +79,14 @@ fn div_align_up(x: u32, y: u32) -> u32 {
     (x + y - 1) / y
 }
 
-fn make_diamond(cx: f64, cy: f64, size: f64) -> [PathEl; 5] {
-    [
+fn make_diamond(cx: f64, cy: f64, size: f64) -> Path {
+    path_from_elem(vec![
         PathEl::MoveTo(Point::new(cx, cy - size)),
         PathEl::LineTo(Point::new(cx + size, cy)),
         PathEl::LineTo(Point::new(cx, cy + size)),
         PathEl::LineTo(Point::new(cx - size, cy)),
         PathEl::ClosePath,
-    ]
+    ])
 }
 
 fn draw(width: u32, height: u32) -> Vec<u32> {
@@ -104,9 +113,7 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
         p2: Point::new(600.0, 400.0),
     };
 
-    let paths = vec![BezPath::from_vec(make_diamond(200.0, 150.0, 70.0).to_vec())
-        .segments()
-        .collect::<Vec<_>>()];
+    let paths = vec![make_diamond(200.0, 150.0, 70.0)];
 
     // clearing
     for y in 0..height {
@@ -116,96 +123,122 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
         }
     }
 
-    // let mut coarse_tiles = VecDeque::default();
-    // coarse_tiles.push_back(CoarseTile {
-    //     tx: 0,
-    //     ty: 0,
-    //     level: 4,
-    //     tape: vec![q0, q1, q2, q3],
-    // });
+    let mut coarse_tiles = VecDeque::default();
+    coarse_tiles.push_back(CoarseTile {
+        tx: 0,
+        ty: 0,
+        level: 4,
+        tape: paths,
+    });
 
-    // while let Some(tile) = coarse_tiles.pop_front() {
-    //     let dx = SUBDIVISION.pow(tile.level as u32 - 1);
-    //     let tile_size = SUBDIVISION.pow(tile.level as u32);
-    //     let x0 = tile.tx * tile_size;
-    //     let y0 = tile.ty * tile_size;
+    let mut fine_tiles = Vec::new();
 
-    //     let mut winding = [[0; SAMPLES]; SAMPLES];
+    while let Some(tile) = coarse_tiles.pop_front() {
+        let dx = SUBDIVISION.pow(tile.level as u32 - 1);
+        let tile_size = SUBDIVISION.pow(tile.level as u32);
+        let x0 = tile.tx * tile_size;
+        let y0 = tile.ty * tile_size;
 
-    //     for sy in 0..SAMPLES {
-    //         for sx in 0..SAMPLES {
-    //             let mut subtile = CoarseTile {
-    //                 tx: tile.tx * SUBDIVISION + sx,
-    //                 ty: tile.ty * SUBDIVISION + sy,
-    //                 level: tile.level - 1,
-    //                 tape: Vec::default(),
-    //             };
-    //             let p = Point::new((x0 + sx * dx) as f64, (y0 + sy * dx) as f64);
-    //             for segment in &tile.tape {
-    //                 let local = quad_winding(*segment, p);
-    //                 winding[sy as usize][sx as usize] += quad_winding(*segment, p);
-    //             }
-    //         }
-    //     }
-    // }
+        // let mut winding = [[0; GRID_SAMPLES]; GRID_SAMPLES];
 
-    for y in 0..height {
-        for x in 0..width {
-            let index = (y * width + x) as usize;
+        for sy in 0..SUBDIVISION {
+            for sx in 0..SUBDIVISION {
+                let x = x0 + sx * dx;
+                let y = y0 + sy * dx;
 
-            framebuffer[index] = rgb(0.0, 0.0, 0.0);
+                if x >= width as usize || y >= height as usize {
+                    continue;
+                }
 
-            let mut coverage = 0.0;
-
-            for sy in 0..SAMPLES {
-                for sx in 0..SAMPLES {
-                    let p = Point::new(
-                        x as f64 + sx as f64 / (SAMPLES + 1) as f64,
-                        y as f64 + sy as f64 / (SAMPLES + 1) as f64,
-                    );
-
-                    for path in &paths {
-                        let mut winding = 0;
-
-                        for segment in path {
-                            match segment.clone() {
-                                PathSeg::Line(Line { p0, p1 }) => {
-                                    let y_min = p0.y.min(p1.y);
-                                    let y_max = p0.y.max(p1.y);
-
-                                    if p.y < y_min || p.y > y_max {
-                                        // no covering of point sample
-                                        continue;
-                                    }
-
-                                    // orientation
-                                    let dy = p1.y - p0.y;
-                                    let w = if dy > 0.0 { 1 } else { -1 };
-
-                                    let p0p1 = p1 - p0;
-                                    let p0p = p - p0;
-
-                                    let wp = p0p1.cross(p0p);
-
-                                    let is_left = wp * dy >= 0.0;
-                                    if is_left {
-                                        winding += w;
-                                    }
-                                }
-                                _ => unimplemented!(),
-                            }
-                        }
-
-                        coverage += winding as f64 / (SAMPLES * SAMPLES) as f64;
+                let mut new_tape = Vec::default();
+                let p0 = Point::new(x as f64, y as f64);
+                for path in &tile.tape {
+                    let mut new_path = Vec::default();
+                    for segment in path {
+                        new_path.push(*segment);
                     }
+                    if new_path.is_empty() {
+                        continue;
+                    }
+                    new_tape.push(new_path);
+                }
+                if new_tape.is_empty() {
+                    continue;
+                }
+
+                if tile.level > 1 {
+                    coarse_tiles.push_back(CoarseTile {
+                        tx: tile.tx * SUBDIVISION + sx,
+                        ty: tile.ty * SUBDIVISION + sy,
+                        level: tile.level - 1,
+                        tape: new_tape,
+                    });
+                } else {
+                    fine_tiles.push(FineTile {
+                        x,
+                        y,
+                        tape: new_tape,
+                    });
                 }
             }
+        }
+    }
 
-            if coverage > 0.0 {
-                framebuffer[index] = rgb(0.0, coverage, 0.0);
-            } else if coverage < 0.0 {
-                framebuffer[index] = rgb(-coverage, 0.0, 0.0);
+    for tile in fine_tiles {
+        let index = tile.y * width as usize + tile.x;
+
+        framebuffer[index] = rgb(0.0, 0.0, 0.0);
+
+        let mut coverage = 0.0;
+
+        for sy in 0..SAMPLES {
+            for sx in 0..SAMPLES {
+                let p = Point::new(
+                    tile.x as f64 + sx as f64 / (SAMPLES + 1) as f64,
+                    tile.y as f64 + sy as f64 / (SAMPLES + 1) as f64,
+                );
+
+                for path in &tile.tape {
+                    let mut winding = 0;
+
+                    for segment in path {
+                        match segment.clone() {
+                            PathSeg::Line(Line { p0, p1 }) => {
+                                let y_min = p0.y.min(p1.y);
+                                let y_max = p0.y.max(p1.y);
+
+                                if p.y < y_min || p.y > y_max {
+                                    // no covering of point sample
+                                    continue;
+                                }
+
+                                // orientation
+                                let dy = p1.y - p0.y;
+                                let w = if dy > 0.0 { 1 } else { -1 };
+
+                                let p0p1 = p1 - p0;
+                                let p0p = p - p0;
+
+                                let wp = p0p1.cross(p0p);
+
+                                let is_left = wp * dy >= 0.0;
+                                if is_left {
+                                    winding += w;
+                                }
+                            }
+                            _ => unimplemented!(),
+                        }
+                    }
+
+                    coverage += winding as f64 / (SAMPLES * SAMPLES) as f64;
+                }
             }
+        }
+
+        if coverage > 0.0 {
+            framebuffer[index] = rgb(0.0, coverage, 0.0);
+        } else if coverage < 0.0 {
+            framebuffer[index] = rgb(-coverage, 0.0, 0.0);
         }
     }
 
