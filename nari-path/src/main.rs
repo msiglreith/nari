@@ -157,6 +157,9 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
                     for segment in path {
                         match segment.clone() {
                             PathSeg::Line(Line { p0, p1 }) => {
+                                // tile bbox test vs segment bbox
+                                // to determine if ray may hit any sample inside it
+
                                 let y_min = p0.y.min(p1.y);
                                 let y_max = p0.y.max(p1.y);
 
@@ -165,7 +168,16 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
                                     continue;
                                 }
 
+                                let x_max = p0.x.max(p1.x);
+
+                                if x_max < p.x {
+                                    // ray will never hit
+                                    continue;
+                                }
+
                                 new_path.push(*segment);
+
+                                // winding to calculate if the whole tile is inside/outside
                             }
                             _ => unimplemented!(),
                         }
