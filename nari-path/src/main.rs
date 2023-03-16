@@ -33,6 +33,10 @@ struct FineTile {
     tape: Vec<Path>,
 }
 
+pub const fn rgb_u8(r: u32, g: u32, b: u32) -> u32 {
+    b | (g << 8) | (r << 16)
+}
+
 pub fn rgb(r: f64, g: f64, b: f64) -> u32 {
     let r = (255.0 * r.clamp(0.0, 1.0)) as u32;
     let g = (255.0 * g.clamp(0.0, 1.0)) as u32;
@@ -88,6 +92,14 @@ fn make_diamond(cx: f64, cy: f64, size: f64) -> Path {
         PathEl::ClosePath,
     ])
 }
+
+const COLOR_LEVELS: [u32; 5] = [
+    rgb_u8(0xff, 0xb7, 0xc3),
+    rgb_u8(0xd3, 0xfa, 0xc7),
+    rgb_u8(0xd9, 0xf2, 0xb4),
+    rgb_u8(0xb4, 0xeb, 0xca),
+    rgb_u8(0xbc, 0xf4, 0xf5),
+];
 
 fn draw(width: u32, height: u32) -> Vec<u32> {
     let mut framebuffer = vec![0u32; (width * height) as usize];
@@ -150,34 +162,86 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
                     continue;
                 }
 
+                let mut backdrop = 0;
                 let mut new_tape = Vec::default();
                 let p = Point::new(x as f64, y as f64);
+
+                let corners = [
+                    Point::new(x as f64, y as f64),
+                    Point::new((x + dx) as f64, y as f64),
+                    Point::new(x as f64, (y + dx) as f64),
+                    Point::new((x + dx) as f64, (y + dx) as f64),
+                ];
+
                 for path in &tile.tape {
                     let mut new_path = Vec::default();
                     for segment in path {
+                        let mut winding = [0; 4];
                         match segment.clone() {
                             PathSeg::Line(Line { p0, p1 }) => {
-                                // tile bbox test vs segment bbox
-                                // to determine if ray may hit any sample inside it
-
                                 let y_min = p0.y.min(p1.y);
                                 let y_max = p0.y.max(p1.y);
 
-                                if (p.y + dx as f64) < y_min || p.y > y_max {
-                                    // no covering of point sample
+                                if y_max < y as f64 || ((y + dx) as f64) < y_min {
                                     continue;
                                 }
 
-                                let x_max = p0.x.max(p1.x);
-
-                                if x_max < p.x {
-                                    // ray will never hit
+                                let dy = p1.y - p0.y;
+                                if dy == 0.0 {
                                     continue;
                                 }
 
-                                new_path.push(*segment);
+                                let w = if dy > 0.0 { 1 } else { -1 };
 
-                                // winding to calculate if the whole tile is inside/outside
+                                let p0p1 = p1 - p0;
+
+                                for i in 0..4 {
+                                    let p = corners[i];
+
+                                    if w > 0 {
+                                        if p.y >= p1.y {
+                                            if p.x < p1.x {
+                                                winding[i] = w;
+                                            }
+                                            continue;
+                                        } else if p.y <= p0.y {
+                                            if p.x < p0.x {
+                                                winding[i] = w;
+                                            }
+                                            continue;
+                                        }
+                                    } else {
+                                        if p.y >= p0.y {
+                                            if p.x < p0.x {
+                                                winding[i] = w;
+                                            }
+                                            continue;
+                                        } else if p.y <= p1.y {
+                                            if p.x < p1.x {
+                                                winding[i] = w;
+                                            }
+                                            continue;
+                                        }
+                                    }
+
+                                    let p0p = p - p0;
+                                    let wps = p0p1.cross(p0p) * dy >= 0.0;
+                                    if wps {
+                                        winding[i] = w;
+                                    }
+                                }
+
+                                if winding[0] != winding[1]
+                                    || winding[2] != winding[3]
+                                    || winding[0] != winding[2]
+                                    || winding[1] != winding[3]
+                                {
+                                    new_path.push(*segment);
+                                } else if winding[2] == winding[3] && winding[1] != 0 {
+                                    if y_min < corners[3].y && corners[3].y < y_max {
+                                        backdrop += w;
+                                    }
+                                }
                             }
                             _ => unimplemented!(),
                         }
@@ -189,6 +253,21 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
                 }
                 if new_tape.is_empty() {
                     continue;
+                }
+
+                for iy in y..y + dx {
+                    if iy >= height as usize {
+                        break;
+                    }
+
+                    for ix in x..x + dx {
+                        if ix >= width as usize {
+                            break;
+                        }
+
+                        let index = iy * width as usize + ix;
+                        framebuffer[index] = COLOR_LEVELS[tile.level - 1];
+                    }
                 }
 
                 if tile.level > 1 {
