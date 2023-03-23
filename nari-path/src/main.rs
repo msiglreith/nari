@@ -101,6 +101,94 @@ const COLOR_LEVELS: [u32; 5] = [
     rgb_u8(0xbc, 0xf4, 0xf5),
 ];
 
+fn line_coeff(p: Point, p0: Point, p1: Point) -> (Vec2, Vec2) {
+    let a1 = p1 - p0;
+    let a0 = p0 - p;
+
+    (a0, a1)
+}
+
+fn quad_coeff(p: Point, p0: Point, p1: Point, p2: Point) -> (Vec2, Vec2, Vec2) {
+    let a2 = p0.to_vec2() - 2.0 * p1.to_vec2() + p2.to_vec2();
+    let a1 = 2.0 * p1.to_vec2() - 2.0 * p0.to_vec2();
+    let a0 = p0 - p;
+
+    (a0, a1, a2)
+}
+
+fn cubic_coeff(p: Point, p0: Point, p1: Point, p2: Point, p3: Point) -> (Vec2, Vec2, Vec2, Vec2) {
+    let a3 = 3.0 * p1.to_vec2() - 3.0 * p2.to_vec2() + p3.to_vec2() - p0.to_vec2();
+    let a2 = 3.0 * p0.to_vec2() - 6.0 * p1.to_vec2() + 3.0 * p2.to_vec2();
+    let a1 = 3.0 * p1.to_vec2() - 3.0 * p0.to_vec2();
+    let a0 = p0 - p;
+
+    (a0, a1, a2, a3)
+}
+
+fn line_norm_sqr(t: f64, a0: Vec2, a1: Vec2) -> f64 {
+    let c = a1 * t + a0;
+    c.dot(c)
+}
+
+fn quad_norm_sqr(t: f64, a0: Vec2, a1: Vec2, a2: Vec2) -> f64 {
+    let c = a0 + (a1 + a2 * t) * t;
+    c.dot(c)
+}
+
+fn cubic_norm_sqr(t: f64, a0: Vec2, a1: Vec2, a2: Vec2, a3: Vec2) -> f64 {
+    let c = a0 + (a1 + (a2 + a3 * t) * t) * t;
+    c.dot(c)
+}
+
+fn line_iteration(t: f64, a0: Vec2, a1: Vec2) -> f64 {
+    let d0 = a1 * t + a0;
+    let d1 = a1;
+
+    let df = |t: f64| 2.0 * d1.dot(d0);
+    let ddf = |t: f64| 2.0 * d1.dot(d1);
+
+    // let xdf = df(t);
+    // let xddf = ddf(t);
+    // t - xdf / xddf
+
+    t - a1.dot(d0) / a1.dot(a1)
+}
+
+fn quad_iteration(t: f64, a0: Vec2, a1: Vec2, a2: Vec2) -> f64 {
+    let d0 = a0 + (a1 + a2 * t) * t;
+    let d1 = a1 + 2.0 * a2 * t;
+    let d2 = 2.0 * a2;
+
+    let df = |t: f64| 2.0 * d1.dot(d0);
+    let ddf = |t: f64| 2.0 * (d2.dot(d0) + (d1).dot(d1));
+
+    // let xdf = df(t);
+    // let xddf = ddf(t);
+    // t - xdf / xddf
+
+    t - d0.dot(d1) / (a1.dot(d0) + d1.dot(d1))
+}
+
+fn cubic_iteration(t: f64, a0: Vec2, a1: Vec2, a2: Vec2, a3: Vec2) -> f64 {
+    let d0 = a0 + (a1 + (a2 + a3 * t) * t) * t;
+    let d1 = a1 + (2.0 * a2 + 3.0 * a3 * t) * t;
+    let d2 = 2.0 * a2 + 6.0 * a3 * t;
+
+    let df = |t: f64| 2.0 * (d1).dot(d0);
+    let ddf = |t: f64| {
+        3.0 * (a1.dot(a0 + a1 * t + a2 * t * t) + (a1 + 2.0 * a2 * t).dot(a1 + 2.0 * a2 * t))
+    };
+
+    let df = |t: f64| 2.0 * d1.dot(d0);
+    let ddf = |t: f64| 2.0 * (d2.dot(d0) + (d1).dot(d1));
+
+    // let xdf = df(t);
+    // let xddf = ddf(t);
+    // t - xdf / xddf
+
+    t - d0.dot(d1) / (d2.dot(d0) + d1.dot(d1))
+}
+
 fn draw(width: u32, height: u32) -> Vec<u32> {
     let mut framebuffer = vec![0u32; (width * height) as usize];
 
@@ -113,7 +201,9 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
     }
 
     let p0 = Point::new(100.0, 100.0);
-    let p1 = Point::new(700.0, 400.0);
+    let p1 = Point::new(200.0, 250.0);
+    let p2 = Point::new(300.0, 350.0);
+    let p3 = Point::new(700.0, 400.0);
 
     for y in 0..height {
         for x in 0..width {
@@ -121,31 +211,31 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
 
             let p = Point::new(x as f64, y as f64);
 
-            if p.y < p0.y.min(p1.y) || p.y > p0.y.max(p1.y) {
-                continue;
-            }
-
-            let a1 = p1 - p0;
-            let a0 = p0 - p;
-
-            let f = |t: f64| {
-                let c = a1 * t + a0;
-                c.dot(c)
-            };
-
-            let df = |t: f64| 2.0 * a1.dot(a1 * t + a0);
-            let ddf = |t: f64| 2.0 * a1.dot(a1);
-
             let mut t = 0.5;
-            for i in 0..5 {
-                let xdf = df(t);
-                let xddf = ddf(t);
-                t = t - xdf / xddf;
+
+            // if p.y < p0.y.min(p2.y) || p.y > p0.y.max(p2.y) {
+            //     continue;
+            // }
+
+            // let (a0, a1) = line_coeff(p, p0, p1);
+            // for i in 0..5 {
+            //     t = line_iteration(t, a0, a1);
+            // }
+            // let distance = line_norm_sqr(t.clamp(0.0, 1.0), a0, a1).sqrt();
+
+            let (a0, a1, a2) = quad_coeff(p, p0, p1, p2);
+            for i in 0..4 {
+                t = quad_iteration(t, a0, a1, a2);
             }
+            let distance = quad_norm_sqr(t.clamp(0.0, 1.0), a0, a1, a2).sqrt();
 
-            let distance = f(t.clamp(0.0, 1.0)).sqrt();
+            // let (a0, a1, a2, a3) = cubic_coeff(p, p0, p1, p2, p3);
+            // for i in 0..4 {
+            //     t = cubic_iteration(t, a0, a1, a2, a3);
+            // }
+            // let distance = cubic_norm_sqr(t.clamp(0.0, 1.0), a0, a1, a2, a3).sqrt();
+
             let c = 0.8 + 0.2 * (distance).cos();
-
             let coverage = c;
 
             if coverage > 0.0 {
