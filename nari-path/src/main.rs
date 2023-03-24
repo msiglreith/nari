@@ -166,7 +166,7 @@ fn quad_iteration(t: f64, a0: Vec2, a1: Vec2, a2: Vec2) -> f64 {
     // let xddf = ddf(t);
     // t - xdf / xddf
 
-    t - d0.dot(d1) / (a1.dot(d0) + d1.dot(d1))
+    t - d0.dot(d1) / (d2.dot(d0) + d1.dot(d1))
 }
 
 fn cubic_iteration(t: f64, a0: Vec2, a1: Vec2, a2: Vec2, a3: Vec2) -> f64 {
@@ -189,7 +189,14 @@ fn cubic_iteration(t: f64, a0: Vec2, a1: Vec2, a2: Vec2, a3: Vec2) -> f64 {
     t - d0.dot(d1) / (d2.dot(d0) + d1.dot(d1))
 }
 
+// type Polynomial = Vec<Vec2>;
+
+// fn find_root(f: Polynomial, df: Polynomial, x1: f64, x2: f64, y1: f64, y2: f64) -> f64 {}
+
+// fn roots(f: Polynomial, t0: f64, t1: f64) -> Vec<f64> {}
+
 fn draw(width: u32, height: u32) -> Vec<u32> {
+    dbg!(width, height);
     let mut framebuffer = vec![0u32; (width * height) as usize];
 
     // clearing
@@ -200,10 +207,10 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
         }
     }
 
-    let p0 = Point::new(100.0, 100.0);
-    let p1 = Point::new(200.0, 250.0);
-    let p2 = Point::new(300.0, 350.0);
-    let p3 = Point::new(700.0, 400.0);
+    let p0 = Point::new(290.133, 495.071);
+    let p1 = Point::new(221.867, 495.071);
+    let p2 = Point::new(221.867, 290.214);
+    let p3 = Point::new(221.867, 221.929);
 
     for y in 0..height {
         for x in 0..width {
@@ -223,11 +230,63 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
             // }
             // let distance = line_norm_sqr(t.clamp(0.0, 1.0), a0, a1).sqrt();
 
-            let (a0, a1, a2) = quad_coeff(p, p0, p1, p2);
-            for i in 0..4 {
-                t = quad_iteration(t, a0, a1, a2);
+            let (a0, a1, a2, a3) = cubic_coeff(p, p0, p1, p2, p3);
+
+            let f = |t: f64| {
+                let d0 = a0 + (a1 + (a2 + a3 * t) * t) * t;
+                let d1 = a1 + (2.0 * a2 + 3.0 * a3 * t) * t;
+
+                d1.dot(d0)
+            };
+
+            let df = |t: f64| {
+                let d0 = a0 + (a1 + (a2 + a3 * t) * t) * t;
+                let d1 = a1 + (2.0 * a2 + 3.0 * a3 * t) * t;
+                let d2 = 2.0 * a2 + 6.0 * a3 * t;
+
+                2.0 * (d2.dot(d0) + (d1).dot(d1))
+            };
+
+            let eps = 0.00001;
+
+            let mut x0 = 0.0;
+            let mut x1 = 1.0;
+
+            if f(x0).signum() == f(x1).signum() {
+                let t = kurbo::common::solve_itp(df, x0, x1, eps, 1, 0.1, df(x0), df(x1));
+                let t2 = bacon_sci::roots::itp((x0, x1), df, 0.1, 2.0, 0.99, 1e-5);
+
+                if x == 310 && y == 325 {
+                    dbg!(f(x0), f(x1), f(t), df(x0), df(x1), t, t2);
+                }
+
+                if f(t).signum() != f(x0).signum() {
+                    x1 = t;
+                } else if f(t).signum() != f(x1).signum() {
+                    x0 = t;
+                } else {
+                    continue;
+                }
             }
-            let distance = quad_norm_sqr(t.clamp(0.0, 1.0), a0, a1, a2).sqrt();
+
+            let t = kurbo::common::solve_itp(f, 0.0, 1.0, eps, 1, 0.1, f(x0), f(x1));
+            let distance = cubic_norm_sqr(t, a0, a1, a2, a3).sqrt();
+
+            if x == 310 && y == 325 {
+                dbg!(distance, t);
+            }
+
+            if t < eps || t > 1.0 - eps {
+                continue;
+            }
+
+            if distance > 170.0 {
+                continue;
+            }
+
+            if x == 310 && y == 325 {
+                dbg!(distance, t);
+            }
 
             // let (a0, a1, a2, a3) = cubic_coeff(p, p0, p1, p2, p3);
             // for i in 0..4 {
@@ -239,7 +298,7 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
             let coverage = c;
 
             if coverage > 0.0 {
-                framebuffer[index] = rgb(0.0, coverage, 0.0);
+                framebuffer[index] = rgb(1.0 - distance / 170.0, coverage, 0.0);
             } else if coverage < 0.0 {
                 framebuffer[index] = rgb(-coverage, 0.0, 0.0);
             }

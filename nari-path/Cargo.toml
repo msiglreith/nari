@@ -9,3 +9,5 @@ edition = "2021"
 softbuffer = "0.2"
 nari-platform.workspace = true
 nari-vello.workspace = true
+kurbo = "0.9"
+bacon-sci = "0.13"
