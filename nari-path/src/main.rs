@@ -189,18 +189,176 @@ fn cubic_iteration(t: f64, a0: Vec2, a1: Vec2, a2: Vec2, a3: Vec2) -> f64 {
     t - d0.dot(d1) / (d2.dot(d0) + d1.dot(d1))
 }
 
+#[derive(Debug, Default)]
 struct Polynomial(Vec<f64>);
 
-struct Bezier {
+impl Polynomial {
+    fn eval(&self, t: f64) -> f64 {
+        let mut x = 0.0;
+        let mut tn = 1.0;
+        for v in &self.0 {
+            x += tn * v;
+            tn *= t;
+        }
+        x
+    }
+
+    /// Remove the highest zero coefficients.
+    fn trim(&mut self) {
+        while let Some(v) = self.0.last().cloned() {
+            if v == 0.0 {
+                self.0.pop();
+            } else {
+                return;
+            }
+        }
+    }
+
+    fn derivative(&self) -> Self {
+        let mut df = Self::default();
+        for i in 1..self.0.len() {
+            df.0.push(i as f64 * (self.0)[i]);
+        }
+        df.trim();
+        df
+    }
+
+    fn mul(&self, other: &Self) -> Self {
+        let n = self.0.len();
+        let m = other.0.len();
+
+        let mut p = Polynomial(vec![0.0; n + m]);
+
+        for i in 0..n {
+            for j in 0..m {
+                (p.0)[i + j] += (self.0)[i] * (other.0)[j];
+            }
+        }
+
+        p.trim();
+        p
+    }
+
+    fn add(&self, other: &Self) -> Self {
+        let n = self.0.len();
+        let m = other.0.len();
+
+        let mut p = Polynomial(vec![0.0; n.max(m)]);
+        for i in 0..n {
+            (p.0)[i] += (self.0)[i];
+        }
+        for i in 0..m {
+            (p.0)[i] += (other.0)[i];
+        }
+
+        p.trim();
+        p
+    }
+
+    fn root_sectors(&self, x0: f64, x1: f64, epsilon: f64, dbg: bool) -> Vec<f64> {
+        let mut sectors = Vec::default();
+        sectors.push(x0);
+
+        if self.0.len() == 2 {
+            if (self.0)[1] != 0.0 {
+                let t = -(self.0)[0] / (self.0)[1];
+                if x0 < t && t < x1 {
+                    sectors.push(t);
+                }
+            }
+        } else {
+            let df = self.derivative();
+            let s = df.root_sectors(x0, x1, epsilon, dbg);
+            if dbg {
+                dbg!(&df);
+                dbg!((self.0.len(), &s));
+            }
+            for i in 0..s.len() - 1 {
+                let s0 = s[i];
+                let s1 = s[i + 1];
+
+                if let Ok(t) =
+                    bacon_sci::roots::itp((s0, s1), |t: f64| self.eval(t), 0.1, 2.0, 0.99, 1e-5)
+                {
+                    if dbg {
+                        dbg!(t);
+                    }
+
+                    if t > epsilon && t < 1.0 - epsilon {
+                        sectors.push(t);
+                    }
+                }
+            }
+        }
+
+        sectors.push(x1);
+        sectors
+    }
+
+    fn find_min(&self, x0: f64, x1: f64, epsilon: f64, dbg: bool) -> f64 {
+        let s = self.derivative().root_sectors(x0, x1, epsilon, dbg);
+
+        if dbg {
+            dbg!(&s);
+        }
+
+        let mut t = 0.0;
+        let mut min = std::f64::MAX;
+
+        for p in s {
+            let distance = self.eval(p);
+            if distance < min {
+                t = p;
+                min = distance;
+            }
+        }
+
+        t
+    }
+}
+
+#[derive(Debug, Default)]
+struct Polynomial2 {
     x: Polynomial,
     y: Polynomial,
 }
 
-// type Polynomial = Vec<Vec2>;
+impl Polynomial2 {
+    fn cubic(p0: Point, p1: Point, p2: Point, p3: Point) -> Self {
+        let a3 = 3.0 * p1.to_vec2() - 3.0 * p2.to_vec2() + p3.to_vec2() - p0.to_vec2();
+        let a2 = 3.0 * p0.to_vec2() - 6.0 * p1.to_vec2() + 3.0 * p2.to_vec2();
+        let a1 = 3.0 * p1.to_vec2() - 3.0 * p0.to_vec2();
+        let a0 = p0;
 
-// fn find_root(f: Polynomial, df: Polynomial, x1: f64, x2: f64, y1: f64, y2: f64) -> f64 {}
+        Self {
+            x: Polynomial(vec![a0.x, a1.x, a2.x, a3.x]),
+            y: Polynomial(vec![a0.y, a1.y, a2.y, a3.y]),
+        }
+    }
 
-// fn roots(f: Polynomial, t0: f64, t1: f64) -> Vec<f64> {}
+    fn eval(&self, t: f64) -> Point {
+        Point::new(self.x.eval(t), self.y.eval(t))
+    }
+
+    fn offset(&mut self, p: Point) {
+        (self.x.0)[0] -= p.x;
+        (self.y.0)[0] -= p.y;
+    }
+
+    fn derivative(&self) -> Self {
+        Self {
+            x: self.x.derivative(),
+            y: self.y.derivative(),
+        }
+    }
+
+    fn dot(&self, other: &Self) -> Polynomial {
+        let xx = self.x.mul(&other.x);
+        let yy = self.y.mul(&other.y);
+
+        xx.add(&yy)
+    }
+}
 
 fn draw(width: u32, height: u32) -> Vec<u32> {
     dbg!(width, height);
@@ -227,85 +385,44 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
 
             let mut t = 0.5;
 
-            // if p.y < p0.y.min(p2.y) || p.y > p0.y.max(p2.y) {
-            //     continue;
-            // }
-
-            // let (a0, a1) = line_coeff(p, p0, p1);
-            // for i in 0..5 {
-            //     t = line_iteration(t, a0, a1);
-            // }
-            // let distance = line_norm_sqr(t.clamp(0.0, 1.0), a0, a1).sqrt();
-
             let (a0, a1, a2, a3) = cubic_coeff(p, p0, p1, p2, p3);
 
-            let f = |t: f64| {
-                let d0 = a0 + (a1 + (a2 + a3 * t) * t) * t;
-                let d1 = a1 + (2.0 * a2 + 3.0 * a3 * t) * t;
+            let mut f = Polynomial2::cubic(p0, p1, p2, p3);
+            f.offset(p);
 
-                d1.dot(d0)
-            };
+            let distance = f.dot(&f);
 
-            let df = |t: f64| {
-                let d0 = a0 + (a1 + (a2 + a3 * t) * t) * t;
-                let d1 = a1 + (2.0 * a2 + 3.0 * a3 * t) * t;
-                let d2 = 2.0 * a2 + 6.0 * a3 * t;
-
-                2.0 * (d2.dot(d0) + (d1).dot(d1))
-            };
-
-            let eps = 0.00001;
+            let epsilon = 0.00001;
 
             let mut x0 = 0.0;
             let mut x1 = 1.0;
 
-            if f(x0).signum() == f(x1).signum() {
-                let t = kurbo::common::solve_itp(df, x0, x1, eps, 1, 0.1, df(x0), df(x1));
-                let t2 = bacon_sci::roots::itp((x0, x1), df, 0.1, 2.0, 0.99, 1e-5);
-
-                if x == 310 && y == 325 {
-                    dbg!(f(x0), f(x1), f(t), df(x0), df(x1), t, t2);
-                }
-
-                if f(t).signum() != f(x0).signum() {
-                    x1 = t;
-                } else if f(t).signum() != f(x1).signum() {
-                    x0 = t;
-                } else {
-                    continue;
-                }
-            }
-
-            let t = kurbo::common::solve_itp(f, 0.0, 1.0, eps, 1, 0.1, f(x0), f(x1));
-            let distance = cubic_norm_sqr(t, a0, a1, a2, a3).sqrt();
+            let t = distance.find_min(x0, x1, epsilon, x == 310 && y == 325);
 
             if x == 310 && y == 325 {
-                dbg!(distance, t);
+                dbg!(
+                    t,
+                    distance.eval(x0).sqrt(),
+                    distance.eval(x1).sqrt(),
+                    distance.eval(t).sqrt(),
+                );
             }
 
-            if t < eps || t > 1.0 - eps {
+            let d = distance.eval(t).sqrt();
+
+            if t < 0.0 || t > 1.0 {
                 continue;
             }
 
-            if distance > 170.0 {
+            if d > 170.0 {
                 continue;
             }
 
-            if x == 310 && y == 325 {
-                dbg!(distance, t);
-            }
-
-            // let (a0, a1, a2, a3) = cubic_coeff(p, p0, p1, p2, p3);
-            // for i in 0..4 {
-            //     t = cubic_iteration(t, a0, a1, a2, a3);
-            // }
-            // let distance = cubic_norm_sqr(t.clamp(0.0, 1.0), a0, a1, a2, a3).sqrt();
-
-            let c = 0.8 + 0.2 * (distance).cos();
+            let c = 0.8 + 0.2 * d.cos();
             let coverage = c;
 
             if coverage > 0.0 {
-                framebuffer[index] = rgb(1.0 - distance / 170.0, coverage, 0.0);
+                framebuffer[index] = rgb(1.0 - d / 170.0, coverage, 0.0);
             } else if coverage < 0.0 {
                 framebuffer[index] = rgb(-coverage, 0.0, 0.0);
             }
