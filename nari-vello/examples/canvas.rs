@@ -64,7 +64,31 @@ async fn run() -> anyhow::Result<()> {
                 let w = size.width as i32;
                 let h = size.height as i32;
 
+                let p = Point::new(x as _, y as _);
+
+                let chrome_minimize = Rect {
+                    x0: size.width.saturating_sub(3 * CLOSE_WIDTH) as _,
+                    x1: size.width.saturating_sub(2 * CLOSE_WIDTH) as _,
+                    y0: 0.0,
+                    y1: CAPTION_HEIGHT as _,
+                };
+                let chrome_maximize = Rect {
+                    x0: size.width.saturating_sub(2 * CLOSE_WIDTH) as _,
+                    x1: size.width.saturating_sub(CLOSE_WIDTH) as _,
+                    y0: 0.0,
+                    y1: CAPTION_HEIGHT as _,
+                };
+                let chrome_close = Rect {
+                    x0: size.width.saturating_sub(CLOSE_WIDTH) as _,
+                    x1: size.width as _,
+                    y0: 0.0,
+                    y1: CAPTION_HEIGHT as _,
+                };
+
                 *area = match (x, y) {
+                    _ if chrome_minimize.contains(p) => SurfaceArea::Minimize,
+                    _ if chrome_maximize.contains(p) => SurfaceArea::Maximize,
+                    _ if chrome_close.contains(p) => SurfaceArea::Close,
                     (_, 0..=CAPTION_HEIGHT) => SurfaceArea::Caption,
                     _ => SurfaceArea::Client,
                 };
@@ -139,6 +163,24 @@ async fn run() -> anyhow::Result<()> {
                     codicon,
                     Codicon::ChromeMaximize,
                     affine_maximize,
+                    &Brush::Solid(foreground),
+                );
+
+                let chrome_close = Rect {
+                    x0: size.width.saturating_sub(CLOSE_WIDTH) as _,
+                    x1: size.width as _,
+                    y0: 0.0,
+                    y1: CAPTION_HEIGHT as _,
+                };
+                let affine_close = Affine::translate(
+                    chrome_close.center()
+                        - canvas.glyph_extent(codicon, Codicon::ChromeClose).center(),
+                );
+                canvas.glyph(
+                    &mut sb,
+                    codicon,
+                    Codicon::ChromeClose,
+                    affine_close,
                     &Brush::Solid(foreground),
                 );
 

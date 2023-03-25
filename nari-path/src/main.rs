@@ -189,6 +189,13 @@ fn cubic_iteration(t: f64, a0: Vec2, a1: Vec2, a2: Vec2, a3: Vec2) -> f64 {
     t - d0.dot(d1) / (d2.dot(d0) + d1.dot(d1))
 }
 
+struct Polynomial(Vec<f64>);
+
+struct Bezier {
+    x: Polynomial,
+    y: Polynomial,
+}
+
 // type Polynomial = Vec<Vec2>;
 
 // fn find_root(f: Polynomial, df: Polynomial, x1: f64, x2: f64, y1: f64, y2: f64) -> f64 {}
