@@ -502,3 +502,29 @@
 //         })
 //     }
 // }
+
+use nari_platform::{ControlFlow, Event, Platform, SurfaceArea};
+
+async fn run() -> anyhow::Result<()> {
+    let platform = Platform::new();
+
+    platform.run(move |event_loop, event| {
+        match event {
+            Event::Resize(extent) => {
+                event_loop.surface.redraw();
+            }
+
+            Event::Hittest { x, y, area } => {}
+
+            Event::Paint => {}
+            _ => (),
+        }
+        ControlFlow::Continue
+    });
+
+    Ok(())
+}
+
+fn main() -> anyhow::Result<()> {
+    pollster::block_on(run())
+}

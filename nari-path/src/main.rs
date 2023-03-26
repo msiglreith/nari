@@ -307,7 +307,7 @@ impl Polynomial {
 
         for p in s {
             let distance = self.eval(p);
-            if distance < min {
+            if distance <= min {
                 t = p;
                 min = distance;
             }
@@ -383,8 +383,6 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
 
             let p = Point::new(x as f64, y as f64);
 
-            let mut t = 0.5;
-
             let (a0, a1, a2, a3) = cubic_coeff(p, p0, p1, p2, p3);
 
             let mut f = Polynomial2::cubic(p0, p1, p2, p3);
@@ -398,18 +396,7 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
             let mut x1 = 1.0;
 
             let t = distance.find_min(x0, x1, epsilon, x == 310 && y == 325);
-
-            if x == 310 && y == 325 {
-                dbg!(
-                    t,
-                    distance.eval(x0).sqrt(),
-                    distance.eval(x1).sqrt(),
-                    distance.eval(t).sqrt(),
-                );
-            }
-
             let d = distance.eval(t).sqrt();
-
             if t < 0.0 || t > 1.0 {
                 continue;
             }
@@ -422,7 +409,7 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
             let coverage = c;
 
             if coverage > 0.0 {
-                framebuffer[index] = rgb(1.0 - d / 170.0, coverage, 0.0);
+                framebuffer[index] = rgb(1.0 - d / 170.0, coverage * t, (1.0 - t) * coverage);
             } else if coverage < 0.0 {
                 framebuffer[index] = rgb(-coverage, 0.0, 0.0);
             }
