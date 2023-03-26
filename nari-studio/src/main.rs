@@ -504,19 +504,62 @@
 // }
 
 use nari_platform::{ControlFlow, Event, Platform, SurfaceArea};
+use nari_vello::{
+    kurbo::{Affine, Point, Rect},
+    peniko::{Brush, Color, Fill},
+    Canvas, Codicon, Scene, SceneBuilder, SceneFragment,
+};
+
+const SYSCONTROL_WIDTH: u32 = 46;
+const SYSCONTROL_HEIGHT: u32 = 28;
 
 async fn run() -> anyhow::Result<()> {
     let platform = Platform::new();
 
+    let mut canvas = Canvas::new(platform.surface).await;
+
+    let codicon = canvas.create_font(std::fs::read("assets/codicon/codicon.ttf")?);
+    let codicon = canvas.create_font_scaled(codicon, 16);
+
+    let background: Color = Color::rgb(0.12, 0.14, 0.17);
+    let foreground: Color = Color::rgb(1.0, 1.0, 1.0);
+    let mut scene = Scene::default();
+
     platform.run(move |event_loop, event| {
         match event {
             Event::Resize(extent) => {
+                canvas.resize(extent);
                 event_loop.surface.redraw();
             }
 
             Event::Hittest { x, y, area } => {}
 
-            Event::Paint => {}
+            Event::Paint => {
+                let size = event_loop.surface.extent();
+
+                let mut sb = SceneBuilder::for_scene(&mut scene);
+                let chrome_minimize = Rect {
+                    x0: size.width.saturating_sub(3 * SYSCONTROL_WIDTH) as _,
+                    x1: size.width.saturating_sub(2 * SYSCONTROL_WIDTH) as _,
+                    y0: 0.0,
+                    y1: SYSCONTROL_HEIGHT as _,
+                };
+                let affine_minimize = Affine::translate(
+                    chrome_minimize.center()
+                        - canvas
+                            .glyph_extent(codicon, Codicon::ChromeMinimize)
+                            .center(),
+                );
+                canvas.glyph(
+                    &mut sb,
+                    codicon,
+                    Codicon::ChromeMinimize,
+                    affine_minimize,
+                    &Brush::Solid(foreground),
+                );
+
+                canvas.present(&scene, background);
+            }
             _ => (),
         }
         ControlFlow::Continue

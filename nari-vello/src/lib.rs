@@ -5,11 +5,12 @@ mod fxp;
 pub mod typo;
 pub use self::codicon::Codicon;
 pub use vello::*;
+use wgpu::Texture;
 
 use self::{
     engine::Engine,
     kurbo::Affine,
-    peniko::{Brush, Fill},
+    peniko::{Brush, Color, Fill},
     typo::{Font, FontScaled, FontSize, GlyphCache, GlyphKey, TextRun},
 };
 use nari_platform::{Extent, Surface};
@@ -65,7 +66,13 @@ impl Canvas {
         };
         swapchain.configure(&device, &swapchain_config);
 
-        let renderer = vello::Renderer::new(&device).unwrap();
+        let renderer = vello::Renderer::new(
+            &device,
+            &RendererOptions {
+                surface_format: Some(wgpu::TextureFormat::Bgra8UnormSrgb),
+            },
+        )
+        .unwrap();
         let engine = Engine::new();
         let glyph_cache = GlyphCache::default();
 
@@ -81,7 +88,7 @@ impl Canvas {
         }
     }
 
-    pub fn present(&mut self, scene: &Scene) {
+    pub fn present(&mut self, scene: &Scene, background: Color) {
         let frame_image = self
             .swapchain
             .get_current_texture()
@@ -93,8 +100,11 @@ impl Canvas {
                 &self.queue,
                 scene,
                 &frame_image,
-                self.swapchain_config.width,
-                self.swapchain_config.height,
+                &RenderParams {
+                    base_color: background,
+                    width: self.swapchain_config.width,
+                    height: self.swapchain_config.height,
+                },
             )
             .expect("failed to render to surface");
 

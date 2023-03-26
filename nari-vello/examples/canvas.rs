@@ -184,7 +184,6 @@ async fn run() -> anyhow::Result<()> {
                     &Brush::Solid(foreground),
                 );
 
-                sb.finish();
                 superluminal_perf::end_event();
                 println!("{:?}", t0.elapsed());
 
