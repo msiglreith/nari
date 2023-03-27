@@ -317,8 +317,8 @@ unsafe extern "system" fn window_proc(
             DefWindowProcW(window, msg, wparam, lparam)
         }
         WM_SIZE => {
-            let width = loword(lparam as u32) as u32;
-            let height = hiword(lparam as u32) as u32;
+            let width = loword(lparam as u32) as f64;
+            let height = hiword(lparam as u32) as f64;
             user_data.send(Event::Resize(Extent { width, height }));
 
             0
@@ -505,8 +505,8 @@ pub struct EventLoop {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Extent {
-    pub width: u32,
-    pub height: u32,
+    pub width: f64,
+    pub height: f64,
 }
 
 #[derive(Copy, Clone)]
@@ -532,8 +532,8 @@ impl Surface {
         }
         let rect = unsafe { rect.assume_init() };
         Extent {
-            width: (rect.right - rect.left) as u32,
-            height: (rect.bottom - rect.top) as u32,
+            width: (rect.right - rect.left) as f64,
+            height: (rect.bottom - rect.top) as f64,
         }
     }
 

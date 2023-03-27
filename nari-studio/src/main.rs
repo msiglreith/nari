@@ -327,16 +327,15 @@
 //     }
 // }
 
-use nari_platform::{ControlFlow, Event, EventLoop, Extent, MouseButtons, Platform, SurfaceArea};
+use nari_platform::{
+    ControlFlow, Event, EventLoop, Extent, MouseButtons, Platform, Surface, SurfaceArea,
+};
 use nari_vello::{
     kurbo::{Affine, Point, Rect},
     peniko::{Brush, Color, Fill},
     typo::{Font, FontScaled},
     Canvas, Codicon, Scene, SceneBuilder, SceneFragment,
 };
-
-const SYSCONTROL_WIDTH: u32 = 46;
-const SYSCONTROL_HEIGHT: u32 = 28;
 
 struct App {
     canvas: Canvas,
@@ -349,40 +348,76 @@ struct App {
     foreground: Color,
 }
 
-struct SysControls;
+struct Border;
+impl Border {
+    const MARGIN: f64 = 5.0;
+    fn hittest(app: &App, p: Point) -> Option<SurfaceArea> {
+        let Extent { width, height } = app.event_loop.surface.extent();
 
-impl SysControls {
-    const BUTTON_WIDTH: u32 = 46;
-    const BUTTON_HEIGHT: u32 = 28;
+        if p.x <= Self::MARGIN {
+            return if p.y <= Self::MARGIN {
+                Some(SurfaceArea::TopLeft)
+            } else if p.y >= height - Self::MARGIN {
+                Some(SurfaceArea::BottomLeft)
+            } else {
+                Some(SurfaceArea::Left)
+            };
+        }
+
+        if p.x >= width - Self::MARGIN {
+            return if p.y <= Self::MARGIN {
+                Some(SurfaceArea::TopRight)
+            } else if p.y >= height - Self::MARGIN {
+                Some(SurfaceArea::BottomRight)
+            } else {
+                Some(SurfaceArea::Right)
+            };
+        }
+
+        if p.y <= Self::MARGIN {
+            return Some(SurfaceArea::Top);
+        }
+        if p.y >= height - Self::MARGIN {
+            return Some(SurfaceArea::Bottom);
+        }
+
+        None
+    }
+}
+
+struct Caption;
+impl Caption {
+    const BUTTON_WIDTH: f64 = 46.0;
+    const BUTTON_HEIGHT: f64 = 28.0;
 
     fn button_minimize(extent: Extent) -> Rect {
         Rect {
-            x0: extent.width.saturating_sub(3 * Self::BUTTON_WIDTH) as _,
-            x1: extent.width.saturating_sub(2 * Self::BUTTON_WIDTH) as _,
+            x0: extent.width - 3.0 * Self::BUTTON_WIDTH,
+            x1: extent.width - 2.0 * Self::BUTTON_WIDTH,
             y0: 0.0,
-            y1: Self::BUTTON_HEIGHT as _,
+            y1: Self::BUTTON_HEIGHT,
         }
     }
 
     fn button_maximize(extent: Extent) -> Rect {
         Rect {
-            x0: extent.width.saturating_sub(2 * Self::BUTTON_WIDTH) as _,
-            x1: extent.width.saturating_sub(1 * Self::BUTTON_WIDTH) as _,
+            x0: extent.width - 2.0 * Self::BUTTON_WIDTH,
+            x1: extent.width - Self::BUTTON_WIDTH,
             y0: 0.0,
-            y1: Self::BUTTON_HEIGHT as _,
+            y1: Self::BUTTON_HEIGHT,
         }
     }
 
     fn button_close(extent: Extent) -> Rect {
         Rect {
-            x0: extent.width.saturating_sub(Self::BUTTON_WIDTH) as _,
-            x1: extent.width as _,
+            x0: extent.width - Self::BUTTON_WIDTH,
+            x1: extent.width,
             y0: 0.0,
-            y1: Self::BUTTON_HEIGHT as _,
+            y1: Self::BUTTON_HEIGHT,
         }
     }
 
-    fn paint(&self, app: &mut App, mut sb: &mut SceneBuilder) {
+    fn paint(app: &mut App, mut sb: &mut SceneBuilder) {
         let extent = app.event_loop.surface.extent();
 
         let chrome_minimize = Self::button_minimize(extent);
@@ -460,8 +495,6 @@ async fn run() -> anyhow::Result<()> {
     };
     let mut scene = Scene::default();
 
-    let sys_controls = SysControls;
-
     platform.run(move |event_loop, event| {
         app.event_loop = event_loop;
 
@@ -471,13 +504,19 @@ async fn run() -> anyhow::Result<()> {
                 app.event_loop.surface.redraw();
             }
 
-            Event::Hittest { x, y, area } => {}
+            Event::Hittest { x, y, area } => {
+                let p = Point::new(x as f64, y as f64);
+
+                if let Some(hit_area) = Border::hittest(&app, p) {
+                    *area = hit_area;
+                }
+            }
 
             Event::Paint => {
                 let size = app.event_loop.surface.extent();
 
                 let mut sb = SceneBuilder::for_scene(&mut scene);
-                sys_controls.paint(&mut app, &mut sb);
+                Caption::paint(&mut app, &mut sb);
 
                 app.canvas.present(&scene, app.background);
             }

@@ -58,8 +58,8 @@ impl Canvas {
         let swapchain_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            width: size.width,
-            height: size.height,
+            width: size.width as _,
+            height: size.height as _,
             present_mode: wgpu::PresentMode::AutoNoVsync,
             alpha_mode: wgpu::CompositeAlphaMode::Opaque,
             view_formats: vec![],
@@ -113,8 +113,8 @@ impl Canvas {
     }
 
     pub fn resize(&mut self, size: Extent) {
-        self.swapchain_config.width = size.width;
-        self.swapchain_config.height = size.height;
+        self.swapchain_config.width = size.width as _;
+        self.swapchain_config.height = size.height as _;
         self.swapchain
             .configure(&self.device, &self.swapchain_config);
     }
