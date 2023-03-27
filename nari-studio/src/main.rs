@@ -166,90 +166,6 @@
 //     }
 // }
 
-// struct Ui {
-//     wsi: gpu::Swapchain,
-//     timeline: VecDeque<gpu::Timestamp>,
-//     canvas: canvas::Canvas,
-//     input: FrameInput,
-
-//     // pool for encoding canvas elements.
-//     // only valid between `begin_frame` and `end_frame`.
-//     pool: gpu::Pool,
-// }
-
-// impl Ui {
-//     // Resize swapchain and dependent resources (ie canvas internal rendertarget).
-//     unsafe fn resize(&mut self, size: PhysicalSize<u32>) {
-//         self.input.size = size;
-//         self.wsi
-//             .resize(&self.canvas, size.width, size.height)
-//             .unwrap();
-//         self.canvas.resize(size.width, size.height);
-//     }
-
-//     unsafe fn begin_frame(&mut self) -> gpu::Frame {
-//         let frame = self.wsi.acquire().unwrap();
-//         let t_wait = self.timeline.pop_front().expect("no pending frames");
-//         self.canvas.wait(t_wait).unwrap();
-
-//         self.pool = self.canvas.acquire_pool().unwrap();
-//         self.canvas.cmd_barriers(
-//             self.pool,
-//             &[],
-//             &[gpu::ImageBarrier {
-//                 image: self.wsi.frame_images[frame.id].aspect(gpu::vk::ImageAspectFlags::COLOR),
-//                 src: gpu::ImageAccess::UNDEFINED,
-//                 dst: gpu::ImageAccess::COLOR_ATTACHMENT_WRITE,
-//             }],
-//         );
-
-//         self.canvas.composition_begin(self.pool);
-
-//         frame
-//     }
-
-//     unsafe fn end_frame(&mut self, frame: gpu::Frame) {
-//         self.canvas.composition_end(
-//             self.input.area(),
-//             self.wsi.frame_rtvs[frame.id],
-//             gpu::vk::AttachmentLoadOp::CLEAR,
-//             BACKGROUND,
-//         );
-
-//         self.canvas.cmd_barriers(
-//             self.pool,
-//             &[],
-//             &[gpu::ImageBarrier {
-//                 image: self.wsi.frame_images[frame.id].aspect(gpu::vk::ImageAspectFlags::COLOR),
-//                 src: gpu::ImageAccess::COLOR_ATTACHMENT_WRITE,
-//                 dst: gpu::ImageAccess::PRESENT,
-//             }],
-//         );
-
-//         let timestamp = self
-//             .canvas
-//             .submit_pool(
-//                 self.pool,
-//                 gpu::Submit {
-//                     waits: &[gpu::SemaphoreSubmit {
-//                         semaphore: frame.acquire,
-//                         stage: gpu::Stage::COLOR_ATTACHMENT_OUTPUT,
-//                     }],
-//                     signals: &[gpu::SemaphoreSubmit {
-//                         semaphore: frame.present,
-//                         stage: gpu::Stage::COLOR_ATTACHMENT_OUTPUT,
-//                     }],
-//                 },
-//             )
-//             .unwrap();
-
-//         self.timeline.push_back(timestamp);
-//         self.wsi.present(&self.canvas, frame);
-//         self.input.events.clear();
-//         self.pool = gpu::Pool::null();
-//     }
-// }
-
 // fn main() -> anyhow::Result<()> {
 //     use winit::platform::windows::WindowExtWindows;
 
@@ -262,48 +178,11 @@
 //         .build(&event_loop)?;
 
 //     unsafe {
-//         let instance = gpu::Instance::new(&window)?;
-//         let gpu = gpu::Gpu::new(&instance, Path::new("assets/shaders"))?;
-
-//         let input = FrameInput {
-//             size: window.inner_size(),
-//             cursor_pos: None,
-//             events: Vec::default(),
-//             modifiers: ModifiersState::default(),
-//         };
-
-//         let wsi = gpu::Swapchain::new(
-//             &instance,
-//             &gpu,
-//             input.size.width,
-//             input.size.height,
-//             gpu::vk::PresentModeKHR::IMMEDIATE,
-//         )?;
-
-//         let canvas = canvas::Canvas::new(
-//             gpu,
-//             input.size.width,
-//             input.size.height,
-//             wsi.swapchain_desc.image_format,
-//         );
-
-//         let mut ui = Ui {
-//             input,
-//             wsi,
-//             canvas,
-//             timeline: VecDeque::from([0; 2]),
-//             pool: gpu::Pool::null(),
-//         };
 
 //         let font_regular = ui
 //             .canvas
 //             .create_font(std::fs::read("assets/Inter/Inter-Regular.ttf")?);
 //         let font_regular = ui.canvas.create_font_scaled(font_regular, 15);
-
-//         let codicon = ui
-//             .canvas
-//             .create_font(std::fs::read("assets/codicon/codicon.ttf")?);
-//         let codicon = ui.canvas.create_font_scaled(codicon, 16);
 
 //         let mut text_cursor = TextCursor {
 //             font: font_regular,
@@ -429,24 +308,6 @@
 //                     text_cursor.update(&mut ui);
 //                     text_cursor2.update(&mut ui);
 
-//                     let chrome_minimize = canvas::Rect {
-//                         x0: size.width.saturating_sub(3 * CLOSE_WIDTH) as _,
-//                         x1: size.width.saturating_sub(2 * CLOSE_WIDTH) as _,
-//                         y0: 0,
-//                         y1: CAPTION_HEIGHT as _,
-//                     };
-//                     let chrome_maximize = canvas::Rect {
-//                         x0: size.width.saturating_sub(2 * CLOSE_WIDTH) as _,
-//                         x1: size.width.saturating_sub(CLOSE_WIDTH) as _,
-//                         y0: 0,
-//                         y1: CAPTION_HEIGHT as _,
-//                     };
-//                     let chrome_close = canvas::Rect {
-//                         x0: size.width.saturating_sub(CLOSE_WIDTH) as _,
-//                         x1: size.width as _,
-//                         y0: 0,
-//                         y1: CAPTION_HEIGHT as _,
-//                     };
 //                     if let Some(cursor) = ui.input.cursor_pos {
 //                         if chrome_minimize.hittest(cursor.x as _, cursor.y as _) {
 //                             ui.canvas.rect(chrome_minimize, [0.27, 0.3, 0.34, 1.0]);
@@ -457,43 +318,6 @@
 //                         }
 //                     }
 
-//                     ui.canvas.text(
-//                         codicon,
-//                         canvas::typo::Pen {
-//                             x: (chrome_minimize.x0 + chrome_minimize.x1) / 2,
-//                             y: (chrome_minimize.y0 + chrome_minimize.y1) / 2 + 8,
-//                             color: TEXT_DEFAULT,
-//                             align_x: canvas::Align::Center,
-//                         },
-//                         canvas::Codicon::ChromeMinimize,
-//                     );
-
-//                     ui.canvas.text(
-//                         codicon,
-//                         canvas::typo::Pen {
-//                             x: (chrome_maximize.x0 + chrome_maximize.x1) / 2,
-//                             y: (chrome_maximize.y0 + chrome_maximize.y1) / 2 + 8,
-//                             color: TEXT_DEFAULT,
-//                             align_x: canvas::Align::Center,
-//                         },
-//                         if window.is_maximized() {
-//                             canvas::Codicon::ChromeRestore
-//                         } else {
-//                             canvas::Codicon::ChromeMaximize
-//                         },
-//                     );
-
-//                     ui.canvas.text(
-//                         codicon,
-//                         canvas::typo::Pen {
-//                             x: (chrome_close.x0 + chrome_close.x1) / 2,
-//                             y: (chrome_close.y0 + chrome_close.y1) / 2 + 8,
-//                             color: TEXT_DEFAULT,
-//                             align_x: canvas::Align::Center,
-//                         },
-//                         canvas::Codicon::ChromeClose,
-//                     );
-
 //                     ui.end_frame(frame);
 //                 }
 //                 Event::RedrawEventsCleared => {}
@@ -503,15 +327,113 @@
 //     }
 // }
 
-use nari_platform::{ControlFlow, Event, Platform, SurfaceArea};
+use nari_platform::{ControlFlow, Event, EventLoop, Extent, MouseButtons, Platform, SurfaceArea};
 use nari_vello::{
     kurbo::{Affine, Point, Rect},
     peniko::{Brush, Color, Fill},
+    typo::{Font, FontScaled},
     Canvas, Codicon, Scene, SceneBuilder, SceneFragment,
 };
 
 const SYSCONTROL_WIDTH: u32 = 46;
 const SYSCONTROL_HEIGHT: u32 = 28;
+
+struct App {
+    canvas: Canvas,
+    event_loop: EventLoop,
+
+    codicon: Font,
+    codicon_regular: FontScaled,
+
+    background: Color,
+    foreground: Color,
+}
+
+struct SysControls;
+
+impl SysControls {
+    const BUTTON_WIDTH: u32 = 46;
+    const BUTTON_HEIGHT: u32 = 28;
+
+    fn button_minimize(extent: Extent) -> Rect {
+        Rect {
+            x0: extent.width.saturating_sub(3 * Self::BUTTON_WIDTH) as _,
+            x1: extent.width.saturating_sub(2 * Self::BUTTON_WIDTH) as _,
+            y0: 0.0,
+            y1: Self::BUTTON_HEIGHT as _,
+        }
+    }
+
+    fn button_maximize(extent: Extent) -> Rect {
+        Rect {
+            x0: extent.width.saturating_sub(2 * Self::BUTTON_WIDTH) as _,
+            x1: extent.width.saturating_sub(1 * Self::BUTTON_WIDTH) as _,
+            y0: 0.0,
+            y1: Self::BUTTON_HEIGHT as _,
+        }
+    }
+
+    fn button_close(extent: Extent) -> Rect {
+        Rect {
+            x0: extent.width.saturating_sub(Self::BUTTON_WIDTH) as _,
+            x1: extent.width as _,
+            y0: 0.0,
+            y1: Self::BUTTON_HEIGHT as _,
+        }
+    }
+
+    fn paint(&self, app: &mut App, mut sb: &mut SceneBuilder) {
+        let extent = app.event_loop.surface.extent();
+
+        let chrome_minimize = Self::button_minimize(extent);
+        let affine_minimize = Affine::translate(
+            chrome_minimize.center()
+                - app
+                    .canvas
+                    .glyph_extent(app.codicon_regular, Codicon::ChromeMinimize)
+                    .center(),
+        );
+        app.canvas.glyph(
+            &mut sb,
+            app.codicon_regular,
+            Codicon::ChromeMinimize,
+            affine_minimize,
+            &Brush::Solid(app.foreground),
+        );
+
+        let chrome_maximize = Self::button_maximize(extent);
+        let affine_maximize = Affine::translate(
+            chrome_maximize.center()
+                - app
+                    .canvas
+                    .glyph_extent(app.codicon_regular, Codicon::ChromeMaximize)
+                    .center(),
+        );
+        app.canvas.glyph(
+            &mut sb,
+            app.codicon_regular,
+            Codicon::ChromeMaximize,
+            affine_maximize,
+            &Brush::Solid(app.foreground),
+        );
+
+        let chrome_close = Self::button_close(extent);
+        let affine_close = Affine::translate(
+            chrome_close.center()
+                - app
+                    .canvas
+                    .glyph_extent(app.codicon_regular, Codicon::ChromeClose)
+                    .center(),
+        );
+        app.canvas.glyph(
+            &mut sb,
+            app.codicon_regular,
+            Codicon::ChromeClose,
+            affine_close,
+            &Brush::Solid(app.foreground),
+        );
+    }
+}
 
 async fn run() -> anyhow::Result<()> {
     let platform = Platform::new();
@@ -519,46 +441,45 @@ async fn run() -> anyhow::Result<()> {
     let mut canvas = Canvas::new(platform.surface).await;
 
     let codicon = canvas.create_font(std::fs::read("assets/codicon/codicon.ttf")?);
-    let codicon = canvas.create_font_scaled(codicon, 16);
+    let codicon_regular = canvas.create_font_scaled(codicon, 16);
 
     let background: Color = Color::rgb(0.12, 0.14, 0.17);
     let foreground: Color = Color::rgb(1.0, 1.0, 1.0);
+
+    let mut app = App {
+        canvas,
+        event_loop: EventLoop {
+            surface: platform.surface,
+            mouse_position: None,
+            mouse_buttons: MouseButtons::empty(),
+        },
+        codicon,
+        codicon_regular,
+        background,
+        foreground,
+    };
     let mut scene = Scene::default();
 
+    let sys_controls = SysControls;
+
     platform.run(move |event_loop, event| {
+        app.event_loop = event_loop;
+
         match event {
             Event::Resize(extent) => {
-                canvas.resize(extent);
-                event_loop.surface.redraw();
+                app.canvas.resize(extent);
+                app.event_loop.surface.redraw();
             }
 
             Event::Hittest { x, y, area } => {}
 
             Event::Paint => {
-                let size = event_loop.surface.extent();
+                let size = app.event_loop.surface.extent();
 
                 let mut sb = SceneBuilder::for_scene(&mut scene);
-                let chrome_minimize = Rect {
-                    x0: size.width.saturating_sub(3 * SYSCONTROL_WIDTH) as _,
-                    x1: size.width.saturating_sub(2 * SYSCONTROL_WIDTH) as _,
-                    y0: 0.0,
-                    y1: SYSCONTROL_HEIGHT as _,
-                };
-                let affine_minimize = Affine::translate(
-                    chrome_minimize.center()
-                        - canvas
-                            .glyph_extent(codicon, Codicon::ChromeMinimize)
-                            .center(),
-                );
-                canvas.glyph(
-                    &mut sb,
-                    codicon,
-                    Codicon::ChromeMinimize,
-                    affine_minimize,
-                    &Brush::Solid(foreground),
-                );
+                sys_controls.paint(&mut app, &mut sb);
 
-                canvas.present(&scene, background);
+                app.canvas.present(&scene, app.background);
             }
             _ => (),
         }

@@ -390,7 +390,7 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
 
             let distance = f.dot(&f);
 
-            let epsilon = 0.00001;
+            let epsilon = 0.001;
 
             let mut x0 = 0.0;
             let mut x1 = 1.0;
