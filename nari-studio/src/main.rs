@@ -389,6 +389,7 @@ struct Caption;
 impl Caption {
     const BUTTON_WIDTH: f64 = 46.0;
     const BUTTON_HEIGHT: f64 = 28.0;
+    const CAPTION_HEIGHT: f64 = Self::BUTTON_HEIGHT;
 
     fn button_minimize(extent: Extent) -> Rect {
         Rect {
@@ -415,6 +416,31 @@ impl Caption {
             y0: 0.0,
             y1: Self::BUTTON_HEIGHT,
         }
+    }
+
+    fn hittest(app: &App, p: Point) -> Option<SurfaceArea> {
+        let extent = app.event_loop.surface.extent();
+
+        let chrome_minimize = Self::button_minimize(extent);
+        if chrome_minimize.contains(p) {
+            return Some(SurfaceArea::Minimize);
+        }
+
+        let chrome_maximize = Self::button_maximize(extent);
+        if chrome_maximize.contains(p) {
+            return Some(SurfaceArea::Maximize);
+        }
+
+        let chrome_close = Self::button_close(extent);
+        if chrome_close.contains(p) {
+            return Some(SurfaceArea::Close);
+        }
+
+        if p.y <= Self::CAPTION_HEIGHT {
+            return Some(SurfaceArea::Caption);
+        }
+
+        None
     }
 
     fn paint(app: &mut App, mut sb: &mut SceneBuilder) {
@@ -509,13 +535,15 @@ async fn run() -> anyhow::Result<()> {
 
                 if let Some(hit_area) = Border::hittest(&app, p) {
                     *area = hit_area;
+                } else if let Some(hit_area) = Caption::hittest(&app, p) {
+                    *area = hit_area;
                 }
             }
 
             Event::Paint => {
                 let size = app.event_loop.surface.extent();
-
                 let mut sb = SceneBuilder::for_scene(&mut scene);
+
                 Caption::paint(&mut app, &mut sb);
 
                 app.canvas.present(&scene, app.background);
