@@ -253,75 +253,6 @@
 //                             // modifiers: ui.input.modifiers,
 //                         });
 //                     }
-//                     WindowEvent::HitTest { x, y, new_area } => {
-//                         let size = window.inner_size();
-//                         let h = size.height;
-//                         let w = size.width;
-
-//                         const MARGIN: u32 = 5;
-
-//                         let chrome_minimize = canvas::Rect {
-//                             x0: size.width.saturating_sub(3 * CLOSE_WIDTH) as _,
-//                             x1: size.width.saturating_sub(2 * CLOSE_WIDTH) as _,
-//                             y0: 0,
-//                             y1: CAPTION_HEIGHT as _,
-//                         };
-//                         let chrome_maximize = canvas::Rect {
-//                             x0: size.width.saturating_sub(2 * CLOSE_WIDTH) as _,
-//                             x1: size.width.saturating_sub(CLOSE_WIDTH) as _,
-//                             y0: 0,
-//                             y1: CAPTION_HEIGHT as _,
-//                         };
-//                         let chrome_close = canvas::Rect {
-//                             x0: size.width.saturating_sub(CLOSE_WIDTH) as _,
-//                             x1: size.width as _,
-//                             y0: 0,
-//                             y1: CAPTION_HEIGHT as _,
-//                         };
-
-//                         *new_area = match (x, y) {
-//                             _ if x <= MARGIN && y <= MARGIN => WindowArea::TOPLEFT,
-//                             _ if x >= w - MARGIN && y <= MARGIN => WindowArea::TOPRIGHT,
-//                             _ if x >= w - MARGIN && y >= h - MARGIN => WindowArea::BOTTOMRIGHT,
-//                             _ if x <= MARGIN && y >= h - MARGIN => WindowArea::BOTTOMLEFT,
-//                             _ if x <= MARGIN => WindowArea::LEFT,
-//                             _ if y <= MARGIN => WindowArea::TOP,
-//                             _ if x >= w - MARGIN => WindowArea::RIGHT,
-//                             _ if y >= h - MARGIN => WindowArea::BOTTOM,
-//                             _ if chrome_minimize.hittest(x as _, y as _) => WindowArea::MINBUTTON,
-//                             _ if chrome_maximize.hittest(x as _, y as _) => WindowArea::MAXBUTTON,
-//                             _ if chrome_close.hittest(x as _, y as _) => WindowArea::CLOSE,
-//                             (_, 0..=CAPTION_HEIGHT) => WindowArea::CAPTION,
-//                             _ => WindowArea::CLIENT,
-//                         }
-//                     }
-//                     _ => (),
-//                 },
-//                 Event::MainEventsCleared => {
-//                     window.request_redraw();
-//                 }
-//                 Event::RedrawRequested(_) => {
-//                     let frame = ui.begin_frame();
-
-//                     let size = window.inner_size();
-
-//                     text_cursor.update(&mut ui);
-//                     text_cursor2.update(&mut ui);
-
-//                     if let Some(cursor) = ui.input.cursor_pos {
-//                         if chrome_minimize.hittest(cursor.x as _, cursor.y as _) {
-//                             ui.canvas.rect(chrome_minimize, [0.27, 0.3, 0.34, 1.0]);
-//                         } else if chrome_maximize.hittest(cursor.x as _, cursor.y as _) {
-//                             ui.canvas.rect(chrome_maximize, [0.27, 0.3, 0.34, 1.0]);
-//                         } else if chrome_close.hittest(cursor.x as _, cursor.y as _) {
-//                             ui.canvas.rect(chrome_close, [0.9, 0.07, 0.14, 1.0]);
-//                         }
-//                     }
-
-//                     ui.end_frame(frame);
-//                 }
-//                 Event::RedrawEventsCleared => {}
-//                 _ => (),
 //             }
 //         })
 //     }
@@ -447,6 +378,41 @@ impl Caption {
         let extent = app.event_loop.surface.extent();
 
         let chrome_minimize = Self::button_minimize(extent);
+        let chrome_maximize = Self::button_maximize(extent);
+        let chrome_close = Self::button_close(extent);
+
+        // hover background
+        if let Some((x, y)) = app.event_loop.mouse_position {
+            let p = Point::new(x as f64, y as f64);
+
+            if chrome_minimize.contains(p) {
+                sb.fill(
+                    Fill::NonZero,
+                    Affine::IDENTITY,
+                    &Brush::Solid(Color::rgb(0.27, 0.3, 0.34)),
+                    None,
+                    &chrome_minimize,
+                );
+            } else if chrome_maximize.contains(p) {
+                sb.fill(
+                    Fill::NonZero,
+                    Affine::IDENTITY,
+                    &Brush::Solid(Color::rgb(0.27, 0.3, 0.34)),
+                    None,
+                    &chrome_maximize,
+                );
+            } else if chrome_close.contains(p) {
+                sb.fill(
+                    Fill::NonZero,
+                    Affine::IDENTITY,
+                    &Brush::Solid(Color::rgb(0.9, 0.07, 0.14)),
+                    None,
+                    &chrome_close,
+                );
+            }
+        }
+
+        // show symbols
         let affine_minimize = Affine::translate(
             chrome_minimize.center()
                 - app
@@ -462,7 +428,6 @@ impl Caption {
             &Brush::Solid(app.foreground),
         );
 
-        let chrome_maximize = Self::button_maximize(extent);
         let affine_maximize = Affine::translate(
             chrome_maximize.center()
                 - app
@@ -478,7 +443,6 @@ impl Caption {
             &Brush::Solid(app.foreground),
         );
 
-        let chrome_close = Self::button_close(extent);
         let affine_close = Affine::translate(
             chrome_close.center()
                 - app
