@@ -9,6 +9,7 @@ edition = "2021"
 unicode-segmentation = "1.9"
 pollster = "0.2"
 anyhow = "1"
+usvg = "0.30"
 
 nari-platform.workspace = true
 nari-vello.workspace = true

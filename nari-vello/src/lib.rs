@@ -1,9 +1,7 @@
-mod codicon;
 mod engine;
 mod fxp;
 
 pub mod typo;
-pub use self::codicon::Codicon;
 pub use vello::*;
 use wgpu::Texture;
 

@@ -23,12 +23,14 @@ use nari_platform::{
     Platform, SurfaceArea,
 };
 use nari_vello::{
-    kurbo::{Affine, Point, Rect},
-    peniko::{Brush, Color, Fill},
+    encoding::Transform,
+    kurbo::{Affine, BezPath, Point, Rect, Shape},
+    peniko::{Brush, Color, Fill, Stroke},
     typo::{Caret, FontScaled},
-    Align, Canvas, Codicon, Scene, SceneBuilder,
+    Align, Canvas, Scene, SceneBuilder,
 };
 use unicode_segmentation::GraphemeCursor;
+use usvg::TreeParsing;
 
 // Pretty simple cursor, might not be ideal for more complex scripts
 // with grapheme clusters.
@@ -315,51 +317,32 @@ impl Caption {
 
         // show symbols
         let affine_minimize = Affine::translate(
-            chrome_minimize.center()
-                - app
-                    .canvas
-                    .glyph_extent(app.style.font_icon, Codicon::ChromeMinimize)
-                    .center(),
+            (chrome_minimize.center() - app.style.icon_chrome_minimize.bbox.center()).floor(),
         );
-        app.canvas.glyph(
+        app.style.icon_chrome_minimize.paint(
             &mut sb,
-            app.style.font_icon,
-            Codicon::ChromeMinimize,
             affine_minimize,
             &Brush::Solid(app.style.color_text),
         );
 
-        let code_maximize = if app.event_loop.surface.is_maximized() {
-            Codicon::ChromeRestore
+        let icon_maximize = if app.event_loop.surface.is_maximized() {
+            &app.style.icon_chrome_restore
         } else {
-            Codicon::ChromeMaximize
+            &app.style.icon_chrome_maximize
         };
-        let affine_maximize = Affine::translate(
-            chrome_maximize.center()
-                - app
-                    .canvas
-                    .glyph_extent(app.style.font_icon, code_maximize)
-                    .center(),
-        );
-        app.canvas.glyph(
+        let affine_maximize =
+            Affine::translate((chrome_maximize.center() - icon_maximize.bbox.center()).floor());
+        icon_maximize.paint(
             &mut sb,
-            app.style.font_icon,
-            code_maximize,
             affine_maximize,
             &Brush::Solid(app.style.color_text),
         );
 
         let affine_close = Affine::translate(
-            chrome_close.center()
-                - app
-                    .canvas
-                    .glyph_extent(app.style.font_icon, Codicon::ChromeClose)
-                    .center(),
+            (chrome_close.center() - app.style.icon_chrome_close.bbox.center()).floor(),
         );
-        app.canvas.glyph(
+        app.style.icon_chrome_close.paint(
             &mut sb,
-            app.style.font_icon,
-            Codicon::ChromeClose,
             affine_close,
             &Brush::Solid(app.style.color_text),
         );
@@ -368,7 +351,11 @@ impl Caption {
 
 struct Style {
     font_regular: FontScaled,
-    font_icon: FontScaled,
+
+    icon_chrome_minimize: Icon,
+    icon_chrome_maximize: Icon,
+    icon_chrome_restore: Icon,
+    icon_chrome_close: Icon,
 
     color_caption: Color,
     color_text: Color,
@@ -383,15 +370,98 @@ struct App {
     style: Style,
 }
 
+#[derive(Default)]
+struct IconPath {
+    path: BezPath,
+    transform: Affine,
+    fill: bool,
+    stroke: Option<f32>,
+}
+
+#[derive(Default)]
+struct Icon {
+    bbox: Rect,
+    paths: Vec<IconPath>,
+}
+
+impl Icon {
+    fn build(data: &[u8]) -> anyhow::Result<Self> {
+        use usvg::NodeExt;
+
+        let mut icon = Icon::default();
+
+        let tree = usvg::Tree::from_data(&data, &usvg::Options::default())?;
+        let mut bbox = None;
+
+        for node in tree.root.descendants() {
+            if let usvg::NodeKind::Path(upath) = &*node.borrow() {
+                let transform = {
+                    let usvg::Transform { a, b, c, d, e, f } = node.abs_transform();
+                    Affine::new([a, b, c, d, e, f])
+                };
+
+                let mut path = BezPath::new();
+                for node in upath.data.segments() {
+                    match node {
+                        usvg::PathSegment::MoveTo { x, y } => path.move_to((x, y)),
+                        usvg::PathSegment::LineTo { x, y } => path.line_to((x, y)),
+                        usvg::PathSegment::CurveTo {
+                            x1,
+                            y1,
+                            x2,
+                            y2,
+                            x,
+                            y,
+                        } => path.curve_to((x1, y1), (x2, y2), (x, y)),
+                        usvg::PathSegment::ClosePath => path.close_path(),
+                    }
+                }
+
+                let bbox_local = path.bounding_box();
+                bbox = bbox.map_or(Some(bbox_local), |bbox: Rect| Some(bbox.union(bbox_local)));
+
+                icon.paths.push(IconPath {
+                    path,
+                    transform,
+                    fill: upath.fill.is_some(),
+                    stroke: upath.stroke.as_ref().map(|s| s.width.get() as f32),
+                });
+            }
+        }
+
+        if let Some(bbox) = bbox {
+            icon.bbox = bbox;
+        }
+
+        Ok(icon)
+    }
+
+    fn paint(&self, sb: &mut SceneBuilder, affine: Affine, brush: &Brush) {
+        for path in &self.paths {
+            let transform = affine * path.transform;
+
+            if path.fill {
+                sb.fill(Fill::NonZero, transform, brush, None, &path.path);
+            }
+            if let Some(stroke) = path.stroke {
+                sb.stroke(&Stroke::new(stroke), transform, brush, None, &path.path);
+            }
+        }
+    }
+}
+
 async fn run() -> anyhow::Result<()> {
     let platform = Platform::new();
 
     let mut canvas = Canvas::new(platform.surface).await;
 
+    let icon_chrome_close = Icon::build(&std::fs::read("assets/codicon/chrome-close.svg")?)?;
+    let icon_chrome_minimize = Icon::build(&std::fs::read("assets/codicon/chrome-minimize.svg")?)?;
+    let icon_chrome_maximize = Icon::build(&std::fs::read("assets/codicon/chrome-maximize.svg")?)?;
+    let icon_chrome_restore = Icon::build(&std::fs::read("assets/codicon/chrome-restore.svg")?)?;
+
     let font_body = canvas.create_font(std::fs::read("assets/Inter/Inter-Regular.ttf")?);
     let font_body_regular = canvas.create_font_scaled(font_body, 16);
-    let codicon = canvas.create_font(std::fs::read("assets/codicon/codicon.ttf")?);
-    let codicon_regular = canvas.create_font_scaled(codicon, 16);
 
     let mut app = App {
         canvas,
@@ -401,8 +471,13 @@ async fn run() -> anyhow::Result<()> {
             mouse_buttons: MouseButtons::empty(),
         },
         style: Style {
-            font_icon: codicon_regular,
             font_regular: font_body_regular,
+
+            icon_chrome_close,
+            icon_chrome_minimize,
+            icon_chrome_maximize,
+            icon_chrome_restore,
+
             color_background: Color::rgb(0.12, 0.14, 0.17),
             color_caption: Color::rgb(0.14, 0.16, 0.20),
             color_text: Color::rgb(1.0, 1.0, 1.0),
