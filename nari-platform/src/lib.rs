@@ -25,8 +25,8 @@ use windows_sys::Win32::{
         Controls::{HOVER_DEFAULT, MARGINS, WM_MOUSELEAVE},
         Input::KeyboardAndMouse::{
             GetKeyState, MapVirtualKeyW, ReleaseCapture, SetCapture, TrackMouseEvent,
-            MAPVK_VK_TO_CHAR, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, VK_CONTROL, VK_MENU,
-            VK_SHIFT,
+            MAPVK_VK_TO_CHAR, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, VK_CONTROL, VK_DOWN,
+            VK_LEFT, VK_MENU, VK_RIGHT, VK_SHIFT, VK_UP,
         },
         WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
@@ -392,13 +392,27 @@ pub enum KeyState {
     Up,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum KeyCode {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Key {
+    Char(char),
+    Code(KeyCode),
+}
+
 pub enum Event<'a> {
     Paint,
     Resize(Extent),
 
     // Should be only used for hotkey like semantics.
     Key {
-        key: char,
+        key: Key,
         state: KeyState,
         modifiers: Modifiers,
     },
@@ -445,19 +459,33 @@ impl UserData {
     fn on_key(&self, wparam: WPARAM, state: KeyState) {
         let c = unsafe { MapVirtualKeyW(wparam as u32, MAPVK_VK_TO_CHAR) };
 
-        if c == 0 {
-            // todo: support other keys as well
-            return;
-        }
+        let modifiers = unsafe { Modifiers::query() };
 
-        const DEAD_KEY_FLAG: u32 = 1 << 31;
-        if let Some(key) = char::from_u32(c & !DEAD_KEY_FLAG) {
-            let modifiers = unsafe { Modifiers::query() };
+        if c == 0 {
+            let code = match wparam as u16 {
+                VK_LEFT => KeyCode::Left,
+                VK_RIGHT => KeyCode::Right,
+                VK_UP => KeyCode::Up,
+                VK_DOWN => KeyCode::Down,
+
+                // todo: support other keys as well
+                _ => return,
+            };
+
             self.send(Event::Key {
-                key,
+                key: Key::Code(code),
                 state,
                 modifiers,
             });
+        } else {
+            const DEAD_KEY_FLAG: u32 = 1 << 31;
+            if let Some(c) = char::from_u32(c & !DEAD_KEY_FLAG) {
+                self.send(Event::Key {
+                    key: Key::Char(c),
+                    state,
+                    modifiers,
+                });
+            }
         }
     }
 

@@ -76,7 +76,7 @@ impl TextRun {
         const HITTEST_MARGIN_PX: f64 = 2.0; // percentage rather of the current glyph?
 
         let bounds = self.bounds();
-        if bounds.winding(p) < 0 {
+        if bounds.winding(p) <= 0 {
             return None;
         }
 
