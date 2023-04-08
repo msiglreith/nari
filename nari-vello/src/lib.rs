@@ -189,6 +189,12 @@ impl Canvas {
             .get(&(font.size, key))
             .expect("missing glyph entry");
 
-        sb.fill(Fill::NonZero, affine, brush, None, &path);
+        sb.fill(
+            Fill::NonZero,
+            affine * Affine::scale_non_uniform(1.0, -1.0),
+            brush,
+            None,
+            &path,
+        );
     }
 }

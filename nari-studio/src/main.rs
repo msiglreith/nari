@@ -20,13 +20,13 @@
 
 use nari_platform::{
     ControlFlow, Event, EventLoop, Extent, Key, KeyCode, KeyState, Modifiers, MouseButtons,
-    Platform, Surface, SurfaceArea,
+    Platform, SurfaceArea,
 };
 use nari_vello::{
     kurbo::{Affine, Point, Rect},
     peniko::{Brush, Color, Fill},
-    typo::{Caret, Font, FontScaled},
-    Align, Canvas, Codicon, Scene, SceneBuilder, SceneFragment,
+    typo::{Caret, FontScaled},
+    Align, Canvas, Codicon, Scene, SceneBuilder,
 };
 use unicode_segmentation::GraphemeCursor;
 
@@ -58,7 +58,7 @@ impl TextCursor {
             return;
         }
 
-        const BACKSPACE: char = '\x0b';
+        const BACKSPACE: char = '\x08';
 
         match (key, state) {
             (Key::Char(BACKSPACE), KeyState::Down) => {
@@ -97,7 +97,9 @@ impl TextCursor {
     ) {
         match (button, state) {
             (MouseButtons::LEFT, KeyState::Down) => {
-                let text_run = app.canvas.build_text_run(app.font_body_regular, &self.text);
+                let text_run = app
+                    .canvas
+                    .build_text_run(app.style.font_regular, &self.text);
                 if let Some((x, y)) = app.event_loop.mouse_position {
                     let p = Point::new(x as _, y as _) - self.pen.to_vec2();
                     if let Some(Caret { cluster }) = text_run.hittest(p) {
@@ -117,34 +119,58 @@ impl TextCursor {
     }
 
     fn paint(&self, app: &mut App, mut sb: &mut SceneBuilder) {
-        let text_run = app.canvas.build_text_run(app.font_body_regular, &self.text);
+        let pen = Affine::translate(self.pen.to_vec2());
+
+        let text_run = app
+            .canvas
+            .build_text_run(app.style.font_regular, &self.text);
+        let bounds = text_run.bounds();
+
+        // selection background
+        if self.focused {
+            sb.fill(
+                Fill::NonZero,
+                pen,
+                &Brush::Solid(app.style.color_text_select),
+                None,
+                &bounds,
+            );
+        }
+
         app.canvas.text_run(
             &mut sb,
             &text_run,
-            Affine::translate(self.pen.to_vec2()),
+            pen,
             Align::Positive,
-            Brush::Solid(app.foreground),
+            Brush::Solid(app.style.color_text),
         );
+
+        // draw caret
+        if self.focused {
+            let advance = text_run.cluster_advance(self.cursor_pos);
+            sb.fill(
+                Fill::NonZero,
+                pen,
+                &Brush::Solid(app.style.color_cursor),
+                None,
+                &Rect {
+                    x0: advance,
+                    x1: advance + 1.0,
+                    ..bounds
+                },
+            );
+        }
     }
-}
-
-struct App {
-    canvas: Canvas,
-    event_loop: EventLoop,
-
-    codicon: Font,
-    codicon_regular: FontScaled,
-    font_body: Font,
-    font_body_regular: FontScaled,
-
-    background: Color,
-    foreground: Color,
 }
 
 struct Border;
 impl Border {
     const MARGIN: f64 = 5.0;
     fn hittest(app: &App, p: Point) -> Option<SurfaceArea> {
+        if app.event_loop.surface.is_maximized() {
+            return None;
+        }
+
         let Extent { width, height } = app.event_loop.surface.extent();
 
         if p.x <= Self::MARGIN {
@@ -239,6 +265,19 @@ impl Caption {
     fn paint(app: &mut App, mut sb: &mut SceneBuilder) {
         let extent = app.event_loop.surface.extent();
 
+        sb.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            &Brush::Solid(app.style.color_caption),
+            None,
+            &Rect {
+                x0: 0.0,
+                x1: extent.width,
+                y0: 0.0,
+                y1: Self::CAPTION_HEIGHT,
+            },
+        );
+
         let chrome_minimize = Self::button_minimize(extent);
         let chrome_maximize = Self::button_maximize(extent);
         let chrome_close = Self::button_close(extent);
@@ -279,47 +318,69 @@ impl Caption {
             chrome_minimize.center()
                 - app
                     .canvas
-                    .glyph_extent(app.codicon_regular, Codicon::ChromeMinimize)
+                    .glyph_extent(app.style.font_icon, Codicon::ChromeMinimize)
                     .center(),
         );
         app.canvas.glyph(
             &mut sb,
-            app.codicon_regular,
+            app.style.font_icon,
             Codicon::ChromeMinimize,
             affine_minimize,
-            &Brush::Solid(app.foreground),
+            &Brush::Solid(app.style.color_text),
         );
 
+        let code_maximize = if app.event_loop.surface.is_maximized() {
+            Codicon::ChromeRestore
+        } else {
+            Codicon::ChromeMaximize
+        };
         let affine_maximize = Affine::translate(
             chrome_maximize.center()
                 - app
                     .canvas
-                    .glyph_extent(app.codicon_regular, Codicon::ChromeMaximize)
+                    .glyph_extent(app.style.font_icon, code_maximize)
                     .center(),
         );
         app.canvas.glyph(
             &mut sb,
-            app.codicon_regular,
-            Codicon::ChromeMaximize,
+            app.style.font_icon,
+            code_maximize,
             affine_maximize,
-            &Brush::Solid(app.foreground),
+            &Brush::Solid(app.style.color_text),
         );
 
         let affine_close = Affine::translate(
             chrome_close.center()
                 - app
                     .canvas
-                    .glyph_extent(app.codicon_regular, Codicon::ChromeClose)
+                    .glyph_extent(app.style.font_icon, Codicon::ChromeClose)
                     .center(),
         );
         app.canvas.glyph(
             &mut sb,
-            app.codicon_regular,
+            app.style.font_icon,
             Codicon::ChromeClose,
             affine_close,
-            &Brush::Solid(app.foreground),
+            &Brush::Solid(app.style.color_text),
         );
     }
+}
+
+struct Style {
+    font_regular: FontScaled,
+    font_icon: FontScaled,
+
+    color_caption: Color,
+    color_text: Color,
+    color_background: Color,
+    color_text_select: Color,
+    color_cursor: Color,
+}
+
+struct App {
+    canvas: Canvas,
+    event_loop: EventLoop,
+    style: Style,
 }
 
 async fn run() -> anyhow::Result<()> {
@@ -332,9 +393,6 @@ async fn run() -> anyhow::Result<()> {
     let codicon = canvas.create_font(std::fs::read("assets/codicon/codicon.ttf")?);
     let codicon_regular = canvas.create_font_scaled(codicon, 16);
 
-    let background: Color = Color::rgb(0.12, 0.14, 0.17);
-    let foreground: Color = Color::rgb(1.0, 1.0, 1.0);
-
     let mut app = App {
         canvas,
         event_loop: EventLoop {
@@ -342,23 +400,26 @@ async fn run() -> anyhow::Result<()> {
             mouse_position: None,
             mouse_buttons: MouseButtons::empty(),
         },
-        codicon,
-        codicon_regular,
-        font_body,
-        font_body_regular,
-        background,
-        foreground,
+        style: Style {
+            font_icon: codicon_regular,
+            font_regular: font_body_regular,
+            color_background: Color::rgb(0.12, 0.14, 0.17),
+            color_caption: Color::rgb(0.14, 0.16, 0.20),
+            color_text: Color::rgb(1.0, 1.0, 1.0),
+            color_text_select: Color::rgb(0.17, 0.22, 0.25),
+            color_cursor: Color::rgb(0.95, 1.0, 1.0),
+        },
     };
 
     let mut text_cursor = TextCursor {
-        pen: Point::new(10.0, 30.0),
+        pen: Point::new(10.0, 50.0),
         cursor_pos: 0,
         text: "hello world! ".to_string(),
         focused: false,
     };
 
     let mut text_cursor2 = TextCursor {
-        pen: Point::new(10.0, 50.0),
+        pen: Point::new(10.0, 70.0),
         cursor_pos: 0,
         text: "test row 2".to_string(),
         focused: false,
@@ -386,7 +447,6 @@ async fn run() -> anyhow::Result<()> {
             }
 
             Event::Paint => {
-                let size = app.event_loop.surface.extent();
                 let mut sb = SceneBuilder::for_scene(&mut scene);
 
                 Caption::paint(&mut app, &mut sb);
@@ -394,7 +454,7 @@ async fn run() -> anyhow::Result<()> {
                 text_cursor.paint(&mut app, &mut sb);
                 text_cursor2.paint(&mut app, &mut sb);
 
-                app.canvas.present(&scene, app.background);
+                app.canvas.present(&scene, app.style.color_background);
             }
 
             Event::Key {
@@ -404,6 +464,8 @@ async fn run() -> anyhow::Result<()> {
             } => {
                 text_cursor.on_key(key, state, modifiers);
                 text_cursor2.on_key(key, state, modifiers);
+
+                app.event_loop.surface.redraw();
             }
 
             Event::MouseButton {
@@ -413,6 +475,8 @@ async fn run() -> anyhow::Result<()> {
             } => {
                 text_cursor.on_mouse(&mut app, button, state, modifiers);
                 text_cursor2.on_mouse(&mut app, button, state, modifiers);
+
+                app.event_loop.surface.redraw();
             }
 
             Event::Char(c) => {

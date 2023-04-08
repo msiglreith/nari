@@ -17,7 +17,7 @@ use windows_sys::Win32::{
         Dwm::{DwmExtendFrameIntoClientArea, DwmFlush},
         Gdi::{
             GetMonitorInfoW, MonitorFromRect, RedrawWindow, ScreenToClient, ValidateRect,
-            MONITORINFOEXW, MONITOR_DEFAULTTONULL, RDW_INTERNALPAINT,
+            MONITORINFOEXW, MONITOR_DEFAULTTONULL, RDW_INVALIDATE,
         },
     },
     System::SystemServices::{IMAGE_DOS_HEADER, MK_LBUTTON, MK_RBUTTON},
@@ -406,6 +406,7 @@ pub enum Key {
     Code(KeyCode),
 }
 
+#[derive(Debug)]
 pub enum Event<'a> {
     Paint,
     Resize(Extent),
@@ -576,7 +577,7 @@ impl Surface {
 
     pub fn redraw(&self) {
         unsafe {
-            RedrawWindow(self.hwnd, ptr::null(), 0, RDW_INTERNALPAINT);
+            RedrawWindow(self.hwnd, ptr::null(), 0, RDW_INVALIDATE);
         }
     }
 }

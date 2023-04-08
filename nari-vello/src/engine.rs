@@ -138,9 +138,9 @@ impl Engine {
 
         Rect {
             x0: fxp6::new(x).f64(),
-            y0: fxp6::new(y - height).f64(),
+            y0: fxp6::new(-y + height).f64(),
             x1: fxp6::new(x + width).f64(),
-            y1: fxp6::new(y).f64(),
+            y1: fxp6::new(-y).f64(),
         }
     }
 
