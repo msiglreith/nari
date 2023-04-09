@@ -1,23 +1,3 @@
-//         // rendering
-//         let text_run = ui.canvas.build_text_run(ui.pool, self.font, &self.text);
-//         if self.focused {
-//             let bounds = text_run.bounds(self.pen);
-//             let cursor_advance = self.pen.x + text_run.cluster_advance(self.pos);
-
-//             ui.canvas.rect(text_run.bounds(self.pen), TEXT_SELECT);
-//             ui.canvas.rect(
-//                 canvas::Rect {
-//                     x0: cursor_advance,
-//                     x1: cursor_advance + 1,
-//                     ..bounds
-//                 },
-//                 CURSOR,
-//             );
-//         }
-//         ui.canvas.text_run(self.pen, &text_run);
-//     }
-// }
-
 use nari_platform::{
     ControlFlow, Event, EventLoop, Extent, Key, KeyCode, KeyState, Modifiers, MouseButtons,
     Platform, SurfaceArea,
