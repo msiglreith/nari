@@ -6,6 +6,7 @@ members = [
     "nari-studio",
     "nari-vello",
     "nari-path",
+    "nari-ir",
 ]
 
 [workspace.dependencies]
@@ -17,6 +18,7 @@ superluminal-perf = "0.2"
 vello = { git = "https://github.com/msiglreith/vello.git", branch = "nari" }
 swash = { git = "https://github.com/msiglreith/swash.git", branch = "nari" }
 raw-window-handle = "0.5"
+anyhow = "1"
 
 [profile.dev.package."*"]
 opt-level = 3

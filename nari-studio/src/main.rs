@@ -6,8 +6,8 @@ use nari_platform::{
     Platform, SurfaceArea,
 };
 use nari_vello::{
-    kurbo::{Affine, Point, Rect},
-    peniko::{Brush, Color, Fill},
+    kurbo::{Affine, Point, Rect, RoundedRect},
+    peniko::{Brush, Color, Fill, Stroke},
     typo::{Caret, FontScaled},
     Align, Canvas, Scene, SceneBuilder,
 };
@@ -382,7 +382,7 @@ async fn run() -> anyhow::Result<()> {
             color_background: Color::rgb(0.12, 0.14, 0.17),
             color_caption: Color::rgb(0.14, 0.16, 0.20),
             color_text: Color::rgb(1.0, 1.0, 1.0),
-            color_text_select: Color::rgb(0.17, 0.22, 0.25),
+            color_text_select: Color::rgb(0.22, 0.25, 0.27),
             color_cursor: Color::rgb(0.95, 1.0, 1.0),
         },
     };
@@ -429,6 +429,37 @@ async fn run() -> anyhow::Result<()> {
 
                 text_cursor.paint(&mut app, &mut sb);
                 text_cursor2.paint(&mut app, &mut sb);
+
+                let pen = Affine::translate((30.0, 400.0));
+
+                let text_run = app
+                    .canvas
+                    .build_text_run(app.style.font_regular, "New Task");
+                let bounds = text_run.bounds().inflate(10.0, 5.0);
+                let bounds_round = RoundedRect::from_rect(bounds, 6.0);
+
+                sb.fill(
+                    Fill::NonZero,
+                    pen,
+                    &Brush::Solid(app.style.color_text_select),
+                    None,
+                    &bounds_round,
+                );
+                sb.stroke(
+                    &Stroke::new(1.0),
+                    pen,
+                    &Brush::Solid(Color::rgb(0.42, 0.45, 0.47)),
+                    None,
+                    &bounds_round,
+                );
+
+                app.canvas.text_run(
+                    &mut sb,
+                    &text_run,
+                    pen,
+                    Align::Positive,
+                    Brush::Solid(app.style.color_text),
+                );
 
                 app.canvas.present(&scene, app.style.color_background);
             }

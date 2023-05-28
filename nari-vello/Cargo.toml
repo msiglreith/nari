@@ -17,6 +17,6 @@ wgpu = "0.15"
 raw-window-handle.workspace = true
 
 [dev-dependencies]
-anyhow = "1"
+anyhow.workspace = true
 pollster = "0.2"
 superluminal-perf.workspace = true

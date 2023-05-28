@@ -73,17 +73,22 @@ impl TextRun {
     }
 
     pub fn hittest(&self, p: Point) -> Option<Caret> {
-        const HITTEST_MARGIN_PX: f64 = 2.0; // percentage rather of the current glyph?
-
         let bounds = self.bounds();
         if bounds.winding(p) <= 0 {
             return None;
         }
 
-        let relativ_x = p.x - bounds.x0 + HITTEST_MARGIN_PX;
+        let relativ_x = p.x - bounds.x0;
         for (i, cluster) in self.clusters.iter().enumerate() {
             if cluster.advances.contains(&relativ_x) {
-                return Some(Caret { cluster: i });
+                let idx = if relativ_x
+                    <= ((cluster.advances.start + cluster.advances.end) / 2.0).floor()
+                {
+                    i
+                } else {
+                    i + 1
+                };
+                return Some(Caret { cluster: idx });
             }
         }
 

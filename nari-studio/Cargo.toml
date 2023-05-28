@@ -8,8 +8,10 @@ edition = "2021"
 [dependencies]
 unicode-segmentation = "1.9"
 pollster = "0.2"
-anyhow = "1"
 usvg = "0.30"
+hashbrown = "0.13"
+ahash = "0.8"
 
+anyhow.workspace = true
 nari-platform.workspace = true
 nari-vello.workspace = true

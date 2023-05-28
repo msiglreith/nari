@@ -7,7 +7,11 @@ History only session based with potential snapshots of changes.
 # Asynchronous
 Following pull-request model to scale to larger number of people. Merges require assisting from users to be conflict free.
 
+### Requirements
+- sync up sub layers (expanded codes)
+- support multi-target layers of the machine code
+- share codegen work
 
 ### References
-- CRDTs
+- CRDTs: Issue sync up graph layers (rewrites) beside the main graph layer. Might need to run through a central server anyway?
 
