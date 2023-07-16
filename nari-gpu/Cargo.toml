@@ -10,8 +10,9 @@ workspace = ".."
 ash = { git = "https://github.com/ash-rs/ash.git", rev = "86dccdf" }
 ash-window = { git = "https://github.com/ash-rs/ash.git", rev = "86dccdf" }
 gpu-allocator = { git = "https://github.com/msiglreith/gpu-allocator.git", branch = "ash-86dccdf" }
-raw-window-handle = "0.5"
 
-anyhow = "1" # remove
-thiserror = "1"
-winit = "0.28"
+raw-window-handle.workspace = true
+anyhow.workspace = true # remove
+
+[dev-dependencies]
+nari-platform.workspace = true

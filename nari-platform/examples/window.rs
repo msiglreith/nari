@@ -1,6 +1,5 @@
 use core::num::NonZeroU32;
 use nari_platform::{ControlFlow, Event, Platform, SurfaceArea};
-
 fn main() {
     let platform = Platform::new();
     let surface = &platform.surface;

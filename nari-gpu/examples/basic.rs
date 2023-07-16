@@ -1,47 +1,33 @@
 use gpu::vk;
 use nari_gpu as gpu;
+use nari_platform::{ControlFlow, Event, Platform};
 use std::path::Path;
-use winit::{
-    dpi::LogicalSize,
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
-};
 fn main() -> anyhow::Result<()> {
-    let event_loop = EventLoop::new();
-
-    let window = WindowBuilder::new()
-        .with_title("nari-gpu :: basic")
-        .with_inner_size(LogicalSize::new(1440.0f32, 800.0))
-        .build(&event_loop)?;
+    let platform = Platform::new();
 
     unsafe {
-        let instance = gpu::Instance::new(&window)?;
+        let instance = gpu::Instance::new(&platform.surface)?;
         let shader_path = Path::new("assets/shaders");
         let mut gpu = gpu::Gpu::new(&instance, shader_path)?;
 
-        let mut size = window.inner_size();
+        let size = platform.surface.extent();
         let mut wsi = gpu::Swapchain::new(
             &instance,
             &gpu,
-            size.width,
-            size.height,
+            size.width as _,
+            size.height as _,
             vk::PresentModeKHR::IMMEDIATE,
         )?;
 
-        event_loop.run(move |event, _, control_flow| {
-            *control_flow = ControlFlow::Wait;
-
+        platform.run(move |event_loop, event| {
             match event {
-                Event::WindowEvent { event, .. } => match event {
-                    WindowEvent::Resized(_) => {
-                        size = window.inner_size();
-                        wsi.resize(&gpu, size.width, size.height).unwrap();
-                    }
-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                    _ => (),
-                },
-                Event::RedrawRequested(_) => {
+                Event::Resize(extent) => {
+                    wsi.resize(&gpu, extent.width as _, extent.height as _)
+                        .unwrap();
+                    event_loop.surface.redraw();
+                }
+                Event::Paint => {
+                    let size = event_loop.surface.extent();
                     let frame = wsi.acquire().unwrap();
                     let pool = gpu.acquire_pool().unwrap();
 
@@ -66,8 +52,8 @@ fn main() -> anyhow::Result<()> {
                     let area = vk::Rect2D {
                         offset: vk::Offset2D { x: 0, y: 0 },
                         extent: vk::Extent2D {
-                            width: size.width,
-                            height: size.height,
+                            width: size.width as _,
+                            height: size.height as _,
                         },
                     };
                     gpu.cmd_set_viewport(
@@ -133,12 +119,12 @@ fn main() -> anyhow::Result<()> {
 
                     wsi.present(&gpu, frame).unwrap();
                 }
-                Event::LoopDestroyed => {
-                    wsi.swapchain_fn.destroy_swapchain(wsi.swapchain, None);
-                    instance.surface_fn.destroy_surface(instance.surface, None);
-                }
                 _ => (),
             }
-        })
+
+            ControlFlow::Continue
+        });
     }
+
+    Ok(())
 }
