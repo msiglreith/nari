@@ -128,7 +128,7 @@ fn main() -> anyhow::Result<()> {
                         scale: 300.0,
                         k: [0.0, -10.0, 20.0],
                     };
-                    let width = 10.0;
+                    let width = 200.0;
                     let offset = width;
 
                     let mut vertices: Vec<StrokeQuadVertex> = Vec::new();

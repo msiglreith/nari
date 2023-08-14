@@ -19,10 +19,10 @@ fn main() {
     let dpi: f64 = 1.0;
     let euler = Euler {
         p: Point::new(0.0, 0.0),
-        scale: dpi * 300.15316943682936,
+        scale: dpi * 300.0,
         k: [0.0, -10.0, 20.0],
     };
-    let width = 100.0;
+    let width = 200.0;
     let offset = width * dpi;
 
     let mut path = Vec::new();
@@ -32,14 +32,16 @@ fn main() {
     path.move_to(euler.p);
 
     // positive side
-    let c0 =
-        ((1.0 - euler.k[1] * offset / euler.scale) / (euler.k[2] * offset / euler.scale)).min(1.0);
+    let c0 = ((1.0 - euler.k[1] * offset / euler.scale) / (euler.k[2] * offset / euler.scale))
+        .min(1.0)
+        .max(0.0);
     dbg!(c0);
     if c0 > 0.0 {
-        let winding_p0 = euler.k[1] * offset / euler.scale < 0.0;
+        let winding_p0 = euler.k[1] * offset / euler.scale < 1.0;
         dbg!(winding_p0);
+        let mut t: f64 = 0.0;
         if winding_p0 {
-            let mut t: f64 = 0.0;
+            // offset forward
             path.line_to(euler.p + euler_normal(euler, t, offset));
             while t < c0 {
                 t = (t + dt).min(c0);
@@ -47,8 +49,24 @@ fn main() {
                 path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
             }
         } else {
-            let mut t: f64 = 0.0;
+            // evolute forward
             path.line_to(euler.p + euler_normal(euler, t, euler_curvature_radius(euler, t)));
+            while t < c0 {
+                t = (t + dt).min(c0);
+                let theta = euler_angle(euler, t);
+                path.line_to(
+                    euler_eval(euler, 0.0, t)
+                        + euler_normal(euler, t, euler_curvature_radius(euler, t)),
+                );
+            }
+            // offset backward
+            path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
+            while t > 0.0 {
+                t = (t - dt).max(0.0);
+                let theta = euler_angle(euler, t);
+                path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
+            }
+            // evolute forward
             while t < c0 {
                 t = (t + dt).min(c0);
                 let theta = euler_angle(euler, t);
@@ -60,10 +78,11 @@ fn main() {
         }
     }
     if c0 < 1.0 {
-        let winding_p1 = (euler.k[1] + euler.k[2]) * offset / euler.scale < 0.0;
+        let winding_p1 = (euler.k[1] + euler.k[2]) * offset / euler.scale < 1.0;
         dbg!(winding_p1);
+        let mut t: f64 = c0;
         if winding_p1 {
-            let mut t: f64 = c0;
+            // offset forward
             path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
             while t < 1.0 {
                 t = (t + dt).min(1.0);
@@ -71,7 +90,7 @@ fn main() {
                 path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
             }
         } else {
-            let mut t: f64 = c0;
+            // evolute forward
             path.line_to(
                 euler_eval(euler, 0.0, t)
                     + euler_normal(euler, t, euler_curvature_radius(euler, t)),
@@ -84,37 +103,67 @@ fn main() {
                         + euler_normal(euler, t, euler_curvature_radius(euler, t)),
                 );
             }
+            // offset backward
+            path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
+            while t > c0 {
+                t = (t - dt).max(c0);
+                let theta = euler_angle(euler, t);
+                path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
+            }
+            // evolute forward
+            while t < 1.0 {
+                t = (t + dt).min(1.0);
+                let theta = euler_angle(euler, t);
+                path.line_to(
+                    euler_eval(euler, 0.0, t)
+                        + euler_normal(euler, t, euler_curvature_radius(euler, t)),
+                );
+            }
         }
-    }
-
-    let mut t = 1.0;
-    path.line_to(euler_eval(euler, 0.0, t));
-    while t > 0.0 {
-        t = (t - dt).max(0.0);
-        path.line_to(euler_eval(euler, 0.0, t));
     }
 
     // negative side
     let offset = -offset;
-    let c0 =
-        ((1.0 - euler.k[1] * offset / euler.scale) / (euler.k[2] * offset / euler.scale)).min(1.0);
+    let c0 = ((1.0 - euler.k[1] * offset / euler.scale) / (euler.k[2] * offset / euler.scale))
+        .min(1.0)
+        .max(0.0);
     dbg!(c0);
-    if c0 > 0.0 {
-        let winding_p0 = euler.k[1] * offset / euler.scale < 0.0;
-        dbg!(winding_p0);
-        if winding_p0 {
-            let mut t: f64 = 0.0;
-            path.line_to(euler.p + euler_normal(euler, t, offset));
-            while t < c0 {
-                t = (t + dt).min(c0);
+    if c0 < 1.0 {
+        let winding_p1 = (euler.k[1] + euler.k[2]) * offset / euler.scale < 1.0;
+        dbg!(winding_p1);
+        let mut t: f64 = 1.0;
+        if winding_p1 {
+            // offset backward
+            path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
+            while t > c0 {
+                t = (t - dt).max(c0);
                 let theta = euler_angle(euler, t);
                 path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
             }
         } else {
-            let mut t: f64 = 0.0;
-            path.line_to(euler.p + euler_normal(euler, t, euler_curvature_radius(euler, t)));
-            while t < c0 {
-                t = (t + dt).min(c0);
+            // evolute backward
+            path.line_to(
+                euler_eval(euler, 0.0, t)
+                    + euler_normal(euler, t, euler_curvature_radius(euler, t)),
+            );
+            while t > c0 {
+                t = (t - dt).max(c0);
+                let theta = euler_angle(euler, t);
+                path.line_to(
+                    euler_eval(euler, 0.0, t)
+                        + euler_normal(euler, t, euler_curvature_radius(euler, t)),
+                );
+            }
+            // offset forward
+            path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
+            while t < 1.0 {
+                t = (t + dt).min(1.0);
+                let theta = euler_angle(euler, t);
+                path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
+            }
+            // evolute backward
+            while t > c0 {
+                t = (t - dt).max(c0);
                 let theta = euler_angle(euler, t);
                 path.line_to(
                     euler_eval(euler, 0.0, t)
@@ -123,25 +172,39 @@ fn main() {
             }
         }
     }
-    if c0 < 1.0 {
-        let winding_p1 = (euler.k[1] + euler.k[2]) * offset / euler.scale < 0.0;
-        dbg!(winding_p1);
-        if winding_p1 {
-            let mut t: f64 = c0;
-            path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
-            while t < 1.0 {
-                t = (t + dt).min(1.0);
+    if c0 > 0.0 {
+        let winding_p0 = euler.k[1] * offset / euler.scale < 1.0;
+        dbg!(winding_p0);
+        let mut t: f64 = c0;
+        if winding_p0 {
+            // offset backward
+            path.line_to(euler.p + euler_normal(euler, t, offset));
+            while t > 0.0 {
+                t = (t - dt).max(0.0);
                 let theta = euler_angle(euler, t);
                 path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
             }
         } else {
-            let mut t: f64 = c0;
-            path.line_to(
-                euler_eval(euler, 0.0, t)
-                    + euler_normal(euler, t, euler_curvature_radius(euler, t)),
-            );
-            while t < 1.0 {
-                t = (t + dt).min(1.0);
+            // evolute backward
+            // path.line_to(euler.p + euler_normal(euler, t, euler_curvature_radius(euler, t)));
+            while t > 0.0 {
+                t = (t - dt).max(0.0);
+                let theta = euler_angle(euler, t);
+                path.line_to(
+                    euler_eval(euler, 0.0, t)
+                        + euler_normal(euler, t, euler_curvature_radius(euler, t)),
+                );
+            }
+            // offset forward
+            path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
+            while t < c0 {
+                t = (t + dt).min(c0);
+                let theta = euler_angle(euler, t);
+                path.line_to(euler_eval(euler, 0.0, t) + euler_normal(euler, t, offset));
+            }
+            // evolute backward
+            while t > 0.0 {
+                t = (t - dt).max(0.0);
                 let theta = euler_angle(euler, t);
                 path.line_to(
                     euler_eval(euler, 0.0, t)
@@ -151,12 +214,9 @@ fn main() {
         }
     }
 
-    let mut t = 1.0;
-    path.line_to(euler_eval(euler, 0.0, t));
-    while t > 0.0 {
-        t = (t - dt).max(0.0);
-        path.line_to(euler_eval(euler, 0.0, t));
-    }
+    path.line_to(euler.p);
+
+    // dbg!(&path);
 
     let mut stroke = Vec::new();
     apply(&path, style, None, &mut stroke);
