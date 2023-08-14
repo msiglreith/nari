@@ -1,3 +1,5 @@
+pub mod euler;
+
 use std::ops::Range;
 use zeno::{PathBuilder, Point};
 
@@ -324,22 +326,30 @@ impl PathBuilder for Rasterizer {
         let control1: Point = control1.into();
         let control2: Point = control2.into();
 
-        let a = p0 * -1.0 + control1 * 3.0 - control2 * 3.0 + p1;
-        let b = (p0 - control1 * 2.0 + control2) * 3.0;
-        let conc = b.length().max((a + b).length());
-        let dt = ((8.0f32.sqrt() * TOLERANCE) / conc).sqrt();
+        // let a = p0 * -1.0 + control1 * 3.0 - control2 * 3.0 + p1;
+        // let b = (p0 - control1 * 2.0 + control2) * 3.0;
+        // let conc = b.length().max((a + b).length());
+        // let dt = ((8.0f32.sqrt() * TOLERANCE) / conc).sqrt();
 
+        // let mut t = 0.0;
+        // while t < 1.0 {
+        //     t = (t + dt).min(1.0);
+        //     let p01 = lerp(p0, control1, t);
+        //     let p12 = lerp(control1, control2, t);
+        //     let p23 = lerp(control2, p1, t);
+        //     let p012 = lerp(p01, p12, t);
+        //     let p123 = lerp(p12, p23, t);
+        //     let p = lerp(p012, p123, t);
+
+        //     self.line_to(p);
+        // }
+
+        let euler = euler::euler_fit_cubic(p0, control1, control2, p1);
+        let dt = 1.0 / euler.scale;
         let mut t = 0.0;
         while t < 1.0 {
             t = (t + dt).min(1.0);
-            let p01 = lerp(p0, control1, t);
-            let p12 = lerp(control1, control2, t);
-            let p23 = lerp(control2, p1, t);
-            let p012 = lerp(p01, p12, t);
-            let p123 = lerp(p12, p23, t);
-            let p = lerp(p012, p123, t);
-
-            self.line_to(p);
+            self.line_to(euler::euler_eval(euler, 0.0, t));
         }
 
         self

@@ -1012,7 +1012,10 @@ dependencies = [
 name = "nari-ochre"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "image",
+ "nari-gpu",
+ "nari-platform",
  "usvg 0.22.0",
  "zeno",
 ]

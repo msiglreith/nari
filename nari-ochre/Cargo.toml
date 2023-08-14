@@ -13,3 +13,6 @@ zeno = "0.2"
 [dev-dependencies]
 image =  { version = "0.23", default-features = false, features = ["png"] }
 usvg = { version = "0.22", default-features = false }
+nari-gpu.workspace = true
+nari-platform.workspace = true
+anyhow.workspace = true

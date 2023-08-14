@@ -149,7 +149,7 @@ impl TextCursor {
 struct Border;
 impl Border {
     const MARGIN: f64 = 5.0;
-    fn hittest(app: &App, p: Point) -> Option<SurfaceArea> {
+    fn hittest(app: &App, p: [g64; 2]) -> Option<SurfaceArea> {
         if app.event_loop.surface.is_maximized() {
             return None;
         }

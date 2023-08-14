@@ -75,6 +75,7 @@ where
         usvg::NodeKind::Path(ref p) => {
             let mut path = Vec::<Command>::new();
             for segment in p.data.0.iter() {
+                dbg!(segment);
                 match *segment {
                     usvg::PathSegment::MoveTo { x, y } => {
                         path.push(Command::MoveTo(Point::new(x as f32, y as f32)));
