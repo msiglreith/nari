@@ -74,14 +74,33 @@ fn traverse_line(target: &mut Image, p0: vec2, p1: vec2) {
     let dx = p1.x - p0.x;
     let dy = p1.y - p0.y;
 
-    let (dtile_x, side_x) = if dx > 0.0 { (1.0, 1.0) } else { (-1.0, 0.0) };
-    let (dtile_y, side_y) = if dy > 0.0 { (1.0, 1.0) } else { (-1.0, 0.0) };
-
-    let length = (dx * dx + dy * dy).sqrt(); // todo: length == 0
-    let dt = 1.0 / length;
-
     let mut tile_x = (p0.x / TILE_SIZE).floor();
     let mut tile_y = (p0.y / TILE_SIZE).floor();
+
+    let (dtile_x, mut dt_x, ddt_x) = if dx > 0.0 {
+        (
+            1.0,
+            (tile_x * TILE_SIZE + TILE_SIZE - p0.x) / dx,
+            TILE_SIZE / dx,
+        )
+    } else if dx < 0.0 {
+        (-1.0, (tile_x * TILE_SIZE - p0.x) / dx, -TILE_SIZE / dx)
+    } else {
+        (0.0, 1.0, 1.0)
+    };
+    let (dtile_y, mut dt_y, ddt_y) = if dy > 0.0 {
+        (
+            1.0,
+            (tile_y * TILE_SIZE + TILE_SIZE - p0.y) / dy,
+            TILE_SIZE / dy,
+        )
+    } else if dy < 0.0 {
+        (-1.0, (tile_y * TILE_SIZE - p0.y) / dy, -TILE_SIZE / dy)
+    } else {
+        (0.0, 1.0, 1.0)
+    };
+
+    let length = (dx * dx + dy * dy).sqrt(); // todo: length == 0
 
     let mut t = 0.0;
     while t < 1.0 {
@@ -89,18 +108,16 @@ fn traverse_line(target: &mut Image, p0: vec2, p1: vec2) {
             target[(tile_x as u32, tile_y as u32)] = rgbaf32::WHITE;
         }
 
-        let px = p0.x + dx * t;
-        let py = p0.y + dy * t;
-
-        let dtdx = ((tile_x + side_x) * TILE_SIZE - px) / dx;
-        let dtdy = ((tile_y + side_y) * TILE_SIZE - py) / dy;
-
-        if dtdx < dtdy {
-            t += dtdx;
+        if dt_x < dt_y {
+            t += dt_x;
             tile_x += dtile_x;
+            dt_y -= dt_x;
+            dt_x = ddt_x;
         } else {
-            t += dtdy;
+            t += dt_y;
             tile_y += dtile_y;
+            dt_x -= dt_y;
+            dt_y = ddt_y;
         }
     }
 }
