@@ -8,6 +8,4 @@ edition = "2021"
 [dependencies]
 softbuffer = "0.2"
 nari-platform.workspace = true
-nari-vello.workspace = true
 kurbo = "0.9"
-bacon-sci = "0.13"

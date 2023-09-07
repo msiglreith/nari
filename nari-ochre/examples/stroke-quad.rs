@@ -126,7 +126,7 @@ fn main() -> anyhow::Result<()> {
                     let euler = Euler {
                         p: Point::new(0.0, 0.0),
                         scale: 300.0,
-                        k: [0.0, -10.0, 20.0],
+                        k: [0.0, 1.0, -6.0],
                     };
                     let width = 200.0;
                     let offset = width;
@@ -234,7 +234,7 @@ fn main() -> anyhow::Result<()> {
                             load: vk::AttachmentLoadOp::CLEAR,
                             store: vk::AttachmentStoreOp::STORE,
                             clear: vk::ClearValue {
-                                color: vk::ClearColorValue { float32: [0.2; 4] },
+                                color: vk::ClearColorValue { float32: [0.0; 4] },
                             },
                         }],
                     );

@@ -125,6 +125,18 @@ pub fn euler_normal(euler: Euler, t: f64, offset: f64) -> Vector {
     Vector::new((-offset * ts) as f32, (offset * tc) as f32)
 }
 
+pub fn euler_inverse(euler: Euler) -> Euler {
+    Euler {
+        p: euler.p,
+        scale: euler.scale,
+        k: [
+            euler.k[0] + euler.k[1] + euler.k[2] / 2.0 - std::f64::consts::PI,
+            -(euler.k[1] + euler.k[2]),
+            euler.k[2],
+        ],
+    }
+}
+
 pub fn euler_eval(euler: Euler, t0: f64, t1: f64) -> Point {
     let s1s0 = t1 - t0;
     let s = (t0 + t1) * 0.5;

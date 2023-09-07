@@ -86,7 +86,7 @@ impl Rasterizer {
         self.close();
 
         self.bins.clear();
-        let mut bin = Bin {
+        let mut bin: Bin = Bin {
             tile_x: 0,
             tile_y: 0,
             start: 0,
