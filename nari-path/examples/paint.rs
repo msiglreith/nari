@@ -29,6 +29,8 @@ impl rgbaf32 {
 
 struct Image {
     memory: Box<[rgbaf32]>,
+    width: u32,
+    height: u32,
     row_pitch: usize,
 }
 
@@ -45,7 +47,8 @@ impl Image {
                 (width * height) as usize
             ]
             .into(),
-
+            width,
+            height,
             row_pitch: width as usize,
         }
     }
@@ -104,7 +107,11 @@ fn traverse_line(target: &mut Image, p0: vec2, p1: vec2) {
 
     let mut t = 0.0;
     while t < 1.0 {
-        if tile_x >= 0.0 && tile_y >= 0.0 {
+        if tile_x >= 0.0
+            && tile_y >= 0.0
+            && tile_x < target.width as f32
+            && tile_y < target.height as f32
+        {
             target[(tile_x as u32, tile_y as u32)] = rgbaf32::WHITE;
         }
 
