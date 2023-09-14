@@ -1,6 +1,6 @@
 use nari_platform::{ControlFlow, Event, Extent, Platform, SurfaceArea};
 use softbuffer::GraphicsContext;
-use std::ops::{Index, IndexMut};
+use std::ops::{Index, IndexMut, Range};
 
 #[derive(Copy, Clone)]
 #[allow(non_camel_case_types)]
@@ -77,33 +77,33 @@ fn traverse_line(target: &mut Image, p0: vec2, p1: vec2) {
     let dx = p1.x - p0.x;
     let dy = p1.y - p0.y;
 
+    let inv_dx = if dx != 0.0 {
+        dx.recip()
+    } else {
+        std::f32::INFINITY
+    };
+    let inv_dy = if dx != 0.0 {
+        dy.recip()
+    } else {
+        std::f32::INFINITY
+    };
+
     let mut tile_x = (p0.x / TILE_SIZE).floor();
     let mut tile_y = (p0.y / TILE_SIZE).floor();
 
-    let (dtile_x, mut dt_x, ddt_x) = if dx > 0.0 {
-        (
-            1.0,
-            (tile_x * TILE_SIZE + TILE_SIZE - p0.x) / dx,
-            TILE_SIZE / dx,
-        )
-    } else if dx < 0.0 {
-        (-1.0, (tile_x * TILE_SIZE - p0.x) / dx, -TILE_SIZE / dx)
+    let (dtile_x, mut dt_x) = if inv_dx > 0.0 {
+        (1.0, (tile_x * TILE_SIZE + TILE_SIZE - p0.x) * inv_dx)
     } else {
-        (0.0, 1.0, 1.0)
+        (-1.0, (tile_x * TILE_SIZE - p0.x) * inv_dx)
     };
-    let (dtile_y, mut dt_y, ddt_y) = if dy > 0.0 {
-        (
-            1.0,
-            (tile_y * TILE_SIZE + TILE_SIZE - p0.y) / dy,
-            TILE_SIZE / dy,
-        )
-    } else if dy < 0.0 {
-        (-1.0, (tile_y * TILE_SIZE - p0.y) / dy, -TILE_SIZE / dy)
+    let (dtile_y, mut dt_y) = if inv_dy > 0.0 {
+        (1.0, (tile_y * TILE_SIZE + TILE_SIZE - p0.y) * inv_dy)
     } else {
-        (0.0, 1.0, 1.0)
+        (-1.0, (tile_y * TILE_SIZE - p0.y) * inv_dy)
     };
 
-    let length = (dx * dx + dy * dy).sqrt(); // todo: length == 0
+    let ddt_x = dtile_x * TILE_SIZE * inv_dx;
+    let ddt_y = dtile_y * TILE_SIZE * inv_dy;
 
     let mut t = 0.0;
     while t < 1.0 {
@@ -129,15 +129,19 @@ fn traverse_line(target: &mut Image, p0: vec2, p1: vec2) {
     }
 }
 
+fn draw_rect(target: &mut Image, x: Range<u32>, y: Range<u32>, color: rgbaf32) {
+    for iy in y {
+        for ix in x.clone() {
+            target[(ix, iy)] = color;
+        }
+    }
+}
+
 fn draw(width: u32, height: u32) -> Vec<u32> {
     // clear output buffer
     let mut output = Image::new(width, height);
 
-    for y in 10..20 {
-        for x in 10..40 {
-            output[(x, y)] = rgbaf32::WHITE;
-        }
-    }
+    draw_rect(&mut output, 10..40, 10..20, rgbaf32::WHITE);
 
     traverse_line(
         &mut output,
