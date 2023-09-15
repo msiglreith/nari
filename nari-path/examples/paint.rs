@@ -209,36 +209,57 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
 
     draw_rect(&mut output, 10..40, 10..20, rgbaf32::WHITE);
 
+    let cx = 100.0;
+    let cy = 100.0;
+    let size = 50.0;
+
+    let path = [
+        [
+            vec2 {
+                x: cx,
+                y: cy - size,
+            },
+            vec2 {
+                x: cx + size,
+                y: cy,
+            },
+        ],
+        [
+            vec2 {
+                x: cx + size,
+                y: cy,
+            },
+            vec2 {
+                x: cx,
+                y: cy + size,
+            },
+        ],
+        [
+            vec2 {
+                x: cx,
+                y: cy + size,
+            },
+            vec2 {
+                x: cx - size,
+                y: cy,
+            },
+        ],
+        [
+            vec2 {
+                x: cx - size,
+                y: cy,
+            },
+            vec2 {
+                x: cx,
+                y: cy - size,
+            },
+        ],
+    ];
+
     let mut quads = Vec::default();
-    quads.extend(traverse_line(
-        frame_params,
-        vec2 { x: 100.0, y: 30.0 },
-        vec2 { x: 300.0, y: 60.0 },
-    ));
-
-    quads.extend(traverse_line(
-        frame_params,
-        vec2 { x: 500.0, y: 60.0 },
-        vec2 { x: 300.0, y: 30.0 },
-    ));
-
-    quads.extend(traverse_line(
-        frame_params,
-        vec2 { x: 100.0, y: 100.0 },
-        vec2 { x: 300.0, y: 70.0 },
-    ));
-
-    quads.extend(traverse_line(
-        frame_params,
-        vec2 { x: 500.0, y: 70.0 },
-        vec2 { x: 300.0, y: 100.0 },
-    ));
-
-    quads.extend(traverse_line(
-        frame_params,
-        vec2 { x: 300.0, y: 120.0 },
-        vec2 { x: 500.0, y: 120.0 },
-    ));
+    for [p0, p1] in path {
+        quads.extend(traverse_line(frame_params, p0, p1));
+    }
 
     // Build tiles from quad ranges later used
     // for backdrop calculation to fill in spans.
@@ -287,17 +308,21 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
         });
     }
 
+    // Sort tile (path/y/x) to generate y-spans in the next step
+    tiles.sort_by(|a, b| a.y.cmp(&b.y).then(a.x.cmp(&b.x)));
+
     // Visualize tiles
     const TILE_PIXELS: u32 = TILE_SIZE as u32 * QUAD_SIZE as u32;
 
-    for tile in tiles {
+    for (i, tile) in tiles.iter().enumerate() {
+        let f = i as f32 / tiles.len() as f32;
         draw_rect(
             &mut output,
             (tile.x as u32 * TILE_PIXELS)..(tile.x + 1) as u32 * TILE_PIXELS,
             (tile.y as u32 * TILE_PIXELS)..(tile.y + 1) as u32 * TILE_PIXELS,
             rgbaf32 {
-                r: 0.18,
-                g: 0.22,
+                r: 1.0 - f,
+                g: f,
                 b: 0.26,
                 a: 1.0,
             },
