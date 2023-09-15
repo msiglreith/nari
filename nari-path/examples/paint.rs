@@ -71,14 +71,39 @@ impl IndexMut<FragmentIdx> for Image {
     }
 }
 
-struct CoverageQuad {
-    x: u16,
-    y: u16,
-    samples: u32,
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum Direction {
+    Positive,
+    Negative,
 }
 
 const QUAD_SIZE: u32 = 2;
 const QUAD_SIZE_F32: f32 = QUAD_SIZE as f32;
+
+#[derive(Copy, Clone)]
+struct CoverageQuad {
+    x: u16,
+    y: u16,
+
+    /// Line direction, important for raycasting
+    dir: Direction,
+
+    /// Sample mask for the quad patch.
+    /// 8 samples per pixel.
+    samples: u32,
+}
+
+/// Number of quads in each dimension.
+const TILE_SIZE: u16 = 8;
+
+#[derive(Copy, Clone)]
+struct Tile {
+    x: u16,
+    y: u16,
+
+    quad_start: usize,
+    quad_mask: u64,
+}
 
 fn traverse_line(frame: FrameParams, p0: vec2, p1: vec2) -> Vec<CoverageQuad> {
     let mut quads = Vec::default();
@@ -95,6 +120,12 @@ fn traverse_line(frame: FrameParams, p0: vec2, p1: vec2) -> Vec<CoverageQuad> {
         dy.recip()
     } else {
         std::f32::INFINITY
+    };
+
+    let dir = if dy > 0.0 {
+        Direction::Positive
+    } else {
+        Direction::Negative
     };
 
     let mut quad_x = (p0.x / QUAD_SIZE_F32).floor();
@@ -130,6 +161,7 @@ fn traverse_line(frame: FrameParams, p0: vec2, p1: vec2) -> Vec<CoverageQuad> {
             quads.push(CoverageQuad {
                 x: quad_x as _,
                 y: quad_y as _,
+                dir,
                 samples: !0,
             });
         }
@@ -160,7 +192,9 @@ fn draw_rect(target: &mut Image, x: Range<u32>, y: Range<u32>, color: rgbaf32) {
 
 #[derive(Copy, Clone, Debug)]
 struct FrameParams {
+    /// Number of quads the framebuffer can fit in x direction.
     width_quads: u16,
+    /// Number of quads the framebuffer can fit in y direction.
     height_quads: u16,
 }
 
@@ -206,6 +240,71 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
         vec2 { x: 500.0, y: 120.0 },
     ));
 
+    // Build tiles from quad ranges later used
+    // for backdrop calculation to fill in spans.
+    //
+    // Should be inlined in the quad generation later on
+    // to minimize the amount of pipeline steps.
+    let mut tiles = Vec::default();
+
+    let mut tile_dir = quads[0].dir;
+    let mut tile_x = quads[0].x / TILE_SIZE;
+    let mut tile_y = quads[0].y / TILE_SIZE;
+    let mut tile_mask = 0;
+    let mut tile_start = 0;
+    for (i, quad) in quads.iter().enumerate() {
+        let x = quad.x / TILE_SIZE;
+        let y = quad.y / TILE_SIZE;
+
+        let qx = quad.x % TILE_SIZE;
+        let qy = quad.y % TILE_SIZE;
+        let quad_mask = qy * TILE_SIZE + qx;
+
+        if x != tile_x || y != tile_y || quad.dir != tile_dir {
+            tiles.push(Tile {
+                x: tile_x,
+                y: tile_y,
+                quad_start: tile_start,
+                quad_mask: tile_mask,
+            });
+
+            tile_x = x;
+            tile_y = y;
+            tile_mask = 1u64 << quad_mask;
+            tile_dir = quad.dir;
+            tile_start = i as _;
+        } else {
+            tile_mask |= 1u64 << quad_mask;
+        }
+    }
+
+    if tile_mask != 0 {
+        tiles.push(Tile {
+            x: tile_x,
+            y: tile_y,
+            quad_start: tile_start,
+            quad_mask: tile_mask,
+        });
+    }
+
+    // Visualize tiles
+    const TILE_PIXELS: u32 = TILE_SIZE as u32 * QUAD_SIZE as u32;
+
+    for tile in tiles {
+        draw_rect(
+            &mut output,
+            (tile.x as u32 * TILE_PIXELS)..(tile.x + 1) as u32 * TILE_PIXELS,
+            (tile.y as u32 * TILE_PIXELS)..(tile.y + 1) as u32 * TILE_PIXELS,
+            rgbaf32 {
+                r: 0.18,
+                g: 0.22,
+                b: 0.26,
+                a: 1.0,
+            },
+        );
+    }
+
+    // Visualize local coverage quads
     for quad in quads {
         for iy in 0..QUAD_SIZE {
             for ix in 0..QUAD_SIZE {
@@ -213,7 +312,18 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
                     quad.x as u32 * QUAD_SIZE + ix,
                     quad.y as u32 * QUAD_SIZE + iy,
                 );
-                output[idx] = rgbaf32::WHITE;
+                let s = iy * QUAD_SIZE + ix;
+
+                // Split sample mask into pixel.
+                let samples = (quad.samples >> (s * 8)) & 0xFF;
+                let coverage = samples.count_ones() as f32 / 7.0;
+
+                output[idx] = rgbaf32 {
+                    r: coverage,
+                    g: coverage,
+                    b: coverage,
+                    a: 1.0,
+                };
             }
         }
     }
