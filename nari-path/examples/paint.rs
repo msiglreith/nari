@@ -71,8 +71,17 @@ impl IndexMut<FragmentIdx> for Image {
     }
 }
 
-fn traverse_line(target: &mut Image, p0: vec2, p1: vec2) {
-    const TILE_SIZE: f32 = 1.0;
+struct CoverageQuad {
+    x: u16,
+    y: u16,
+    samples: u32,
+}
+
+const QUAD_SIZE: u32 = 2;
+const QUAD_SIZE_F32: f32 = QUAD_SIZE as f32;
+
+fn traverse_line(frame: FrameParams, p0: vec2, p1: vec2) -> Vec<CoverageQuad> {
+    let mut quads = Vec::default();
 
     let dx = p1.x - p0.x;
     let dy = p1.y - p0.y;
@@ -88,45 +97,57 @@ fn traverse_line(target: &mut Image, p0: vec2, p1: vec2) {
         std::f32::INFINITY
     };
 
-    let mut tile_x = (p0.x / TILE_SIZE).floor();
-    let mut tile_y = (p0.y / TILE_SIZE).floor();
+    let mut quad_x = (p0.x / QUAD_SIZE_F32).floor();
+    let mut quad_y = (p0.y / QUAD_SIZE_F32).floor();
 
-    let (dtile_x, mut dt_x) = if inv_dx > 0.0 {
-        (1.0, (tile_x * TILE_SIZE + TILE_SIZE - p0.x) * inv_dx)
+    let (dquad_x, mut dt_x) = if inv_dx > 0.0 {
+        (
+            1.0,
+            (quad_x * QUAD_SIZE_F32 + QUAD_SIZE_F32 - p0.x) * inv_dx,
+        )
     } else {
-        (-1.0, (tile_x * TILE_SIZE - p0.x) * inv_dx)
+        (-1.0, (quad_x * QUAD_SIZE_F32 - p0.x) * inv_dx)
     };
-    let (dtile_y, mut dt_y) = if inv_dy > 0.0 {
-        (1.0, (tile_y * TILE_SIZE + TILE_SIZE - p0.y) * inv_dy)
+    let (dquad_y, mut dt_y) = if inv_dy > 0.0 {
+        (
+            1.0,
+            (quad_y * QUAD_SIZE_F32 + QUAD_SIZE_F32 - p0.y) * inv_dy,
+        )
     } else {
-        (-1.0, (tile_y * TILE_SIZE - p0.y) * inv_dy)
+        (-1.0, (quad_y * QUAD_SIZE_F32 - p0.y) * inv_dy)
     };
 
-    let ddt_x = dtile_x * TILE_SIZE * inv_dx;
-    let ddt_y = dtile_y * TILE_SIZE * inv_dy;
+    let ddt_x = dquad_x * QUAD_SIZE_F32 * inv_dx;
+    let ddt_y = dquad_y * QUAD_SIZE_F32 * inv_dy;
 
     let mut t = 0.0;
     while t < 1.0 {
-        if tile_x >= 0.0
-            && tile_y >= 0.0
-            && tile_x < target.width as f32
-            && tile_y < target.height as f32
+        if quad_x >= 0.0
+            && quad_y >= 0.0
+            && quad_x < frame.width_quads as f32
+            && quad_y < frame.height_quads as f32
         {
-            target[(tile_x as u32, tile_y as u32)] = rgbaf32::WHITE;
+            quads.push(CoverageQuad {
+                x: quad_x as _,
+                y: quad_y as _,
+                samples: !0,
+            });
         }
 
         if dt_x < dt_y {
             t += dt_x;
-            tile_x += dtile_x;
+            quad_x += dquad_x;
             dt_y -= dt_x;
             dt_x = ddt_x;
         } else {
             t += dt_y;
-            tile_y += dtile_y;
+            quad_y += dquad_y;
             dt_x -= dt_y;
             dt_y = ddt_y;
         }
     }
+
+    quads
 }
 
 fn draw_rect(target: &mut Image, x: Range<u32>, y: Range<u32>, color: rgbaf32) {
@@ -137,41 +158,65 @@ fn draw_rect(target: &mut Image, x: Range<u32>, y: Range<u32>, color: rgbaf32) {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+struct FrameParams {
+    width_quads: u16,
+    height_quads: u16,
+}
+
 fn draw(width: u32, height: u32) -> Vec<u32> {
     // clear output buffer
     let mut output = Image::new(width, height);
 
+    let frame_params = FrameParams {
+        width_quads: ((width + QUAD_SIZE - 1) / QUAD_SIZE) as u16,
+        height_quads: ((height + QUAD_SIZE - 1) / QUAD_SIZE) as u16,
+    };
+
     draw_rect(&mut output, 10..40, 10..20, rgbaf32::WHITE);
 
-    traverse_line(
-        &mut output,
+    let mut quads = Vec::default();
+    quads.extend(traverse_line(
+        frame_params,
         vec2 { x: 100.0, y: 30.0 },
         vec2 { x: 300.0, y: 60.0 },
-    );
+    ));
 
-    traverse_line(
-        &mut output,
+    quads.extend(traverse_line(
+        frame_params,
         vec2 { x: 500.0, y: 60.0 },
         vec2 { x: 300.0, y: 30.0 },
-    );
+    ));
 
-    traverse_line(
-        &mut output,
+    quads.extend(traverse_line(
+        frame_params,
         vec2 { x: 100.0, y: 100.0 },
         vec2 { x: 300.0, y: 70.0 },
-    );
+    ));
 
-    traverse_line(
-        &mut output,
+    quads.extend(traverse_line(
+        frame_params,
         vec2 { x: 500.0, y: 70.0 },
         vec2 { x: 300.0, y: 100.0 },
-    );
+    ));
 
-    traverse_line(
-        &mut output,
+    quads.extend(traverse_line(
+        frame_params,
         vec2 { x: 300.0, y: 120.0 },
         vec2 { x: 500.0, y: 120.0 },
-    );
+    ));
+
+    for quad in quads {
+        for iy in 0..QUAD_SIZE {
+            for ix in 0..QUAD_SIZE {
+                let idx = (
+                    quad.x as u32 * QUAD_SIZE + ix,
+                    quad.y as u32 * QUAD_SIZE + iy,
+                );
+                output[idx] = rgbaf32::WHITE;
+            }
+        }
+    }
 
     // resolve output to framebuffer
     let mut framebuffer = vec![0; (width * height) as usize];
