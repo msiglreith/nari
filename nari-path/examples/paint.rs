@@ -71,26 +71,37 @@ impl IndexMut<FragmentIdx> for Image {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum Direction {
     Positive,
     Negative,
 }
 
+const SAMPLES: u32 = 8;
+const SAMPLE_LOCATIONS: [i32; 16] = [0, 5, 3, 7, 1, 4, 6, 2, 0, 5, 3, 7, 1, 4, 6, 2];
+// const SAMPLE_LOCATIONS: [i32; 16] = [7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7];
+
 const QUAD_SIZE: u32 = 2;
 const QUAD_SIZE_F32: f32 = QUAD_SIZE as f32;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct CoverageQuad {
     x: u16,
     y: u16,
 
-    /// Line direction, important for raycasting
-    dir: Direction,
+    /// Winding of line according to x/y rays
+    winding: i32,
+    coverage: Coverage,
+}
+
+#[derive(Copy, Clone, Debug)]
+enum Coverage {
+    /// Fill with winding number of topleft corner.
+    Fill(u32),
 
     /// Sample mask for the quad patch.
     /// 8 samples per pixel.
-    samples: u32,
+    Mask(u32),
 }
 
 /// Number of quads in each dimension.
@@ -105,81 +116,128 @@ struct Tile {
     quad_mask: u64,
 }
 
-fn traverse_line(frame: FrameParams, p0: vec2, p1: vec2) -> Vec<CoverageQuad> {
+#[derive(Copy, Clone, Debug)]
+struct Intersect {
+    x: u16,
+    y: u16,
+    winding: i32,
+}
+
+fn traverse_line(frame: FrameParams, p0: vec2, p1: vec2) -> (Vec<CoverageQuad>, Vec<Intersect>) {
     let mut quads = Vec::default();
+    let mut intersects = Vec::default();
 
     let dx = p1.x - p0.x;
     let dy = p1.y - p0.y;
 
-    let inv_dx = if dx != 0.0 {
-        dx.recip()
-    } else {
-        std::f32::INFINITY
-    };
-    let inv_dy = if dx != 0.0 {
-        dy.recip()
-    } else {
-        std::f32::INFINITY
-    };
+    let winding_x = if dy > 0.0 { 1 } else { -1 };
+    let winding_y = if dx > 0.0 { -1 } else { 1 };
 
-    let dir = if dy > 0.0 {
-        Direction::Positive
-    } else {
-        Direction::Negative
-    };
+    let (y0, y1, mut x, ty0, ty1, mut tx, dx) = if p0.y < p1.y {
+        let dx = (p1.x - p0.x) / (p1.y - p0.y);
 
-    let mut quad_x = (p0.x / QUAD_SIZE_F32).floor();
-    let mut quad_y = (p0.y / QUAD_SIZE_F32).floor();
+        let py = p0.y * 8.0 - 0.5;
+        let y0 = (p0.y * 8.0 - 0.5).ceil();
+        let y1 = (p1.y * 8.0 - 0.5).ceil();
+        let x = p0.x * 8.0 - 0.5 + (y0 - py) * dx;
 
-    let (dquad_x, mut dt_x) = if inv_dx > 0.0 {
-        (
-            1.0,
-            (quad_x * QUAD_SIZE_F32 + QUAD_SIZE_F32 - p0.x) * inv_dx,
-        )
+        let py = p0.y / 2.0;
+        let ty0 = (p0.y / 2.0).ceil();
+        let ty1 = (p1.y / 2.0).ceil();
+        let tx = p0.x / 2.0 + (y0 - py) * dx;
+
+        (y0, y1, x, ty0, ty1, tx, dx)
     } else {
-        (-1.0, (quad_x * QUAD_SIZE_F32 - p0.x) * inv_dx)
-    };
-    let (dquad_y, mut dt_y) = if inv_dy > 0.0 {
-        (
-            1.0,
-            (quad_y * QUAD_SIZE_F32 + QUAD_SIZE_F32 - p0.y) * inv_dy,
-        )
-    } else {
-        (-1.0, (quad_y * QUAD_SIZE_F32 - p0.y) * inv_dy)
+        let dx = (p0.x - p1.x) / (p0.y - p1.y);
+
+        let py = p1.y * 8.0 - 0.5;
+        let y0 = (p1.y * 8.0 + 0.5).floor();
+        let y1 = (p0.y * 8.0 + 0.5).floor();
+        let x = p1.x * 8.0 - 0.5 + (y0 - py) * dx;
+
+        let py = p1.y / 2.0;
+        let ty0 = (p1.y / 2.0 + 1.0).floor();
+        let ty1 = (p0.y / 2.0 + 1.0).floor();
+        let tx = p1.x / 2.0 + (y0 - py) * dx;
+
+        (y0, y1, x, ty0, ty1, tx, dx)
     };
 
-    let ddt_x = dquad_x * QUAD_SIZE_F32 * inv_dx;
-    let ddt_y = dquad_y * QUAD_SIZE_F32 * inv_dy;
+    let mut mask = 0u32;
 
-    let mut t = 0.0;
-    while t < 1.0 {
-        if quad_x >= 0.0
-            && quad_y >= 0.0
-            && quad_x < frame.width_quads as f32
-            && quad_y < frame.height_quads as f32
-        {
-            quads.push(CoverageQuad {
-                x: quad_x as _,
-                y: quad_y as _,
-                dir,
-                samples: !0,
+    let mut prev_x = x as i32 / 16;
+    let mut prev_y = y0 as i32 / 16;
+
+    for y in y0 as i32..y1 as i32 {
+        let ty = y / 16;
+        let tx = x as i32 / 16;
+        let sy = y % 16;
+        let sx = x as i32 % 16;
+
+        if sy == 0 && ty >= 0 {
+            intersects.push(Intersect {
+                x: (tx + 1).max(0) as _,
+                y: ty as _,
+                winding: winding_x,
             });
         }
 
-        if dt_x < dt_y {
-            t += dt_x;
-            quad_x += dquad_x;
-            dt_y -= dt_x;
-            dt_x = ddt_x;
-        } else {
-            t += dt_y;
-            quad_y += dquad_y;
-            dt_x -= dt_y;
-            dt_y = ddt_y;
+        {
+            if ty != prev_y {
+                dbg!((prev_y, mask));
+                quads.push(CoverageQuad {
+                    x: prev_x as _,
+                    y: prev_y as _,
+                    winding: winding_x,
+                    coverage: Coverage::Mask(mask),
+                });
+
+                mask = 0;
+            } else if tx != prev_x {
+                dbg!((prev_x, mask));
+                quads.push(CoverageQuad {
+                    x: prev_x as _,
+                    y: prev_y as _,
+                    winding: winding_x,
+                    coverage: Coverage::Mask(mask),
+                });
+                mask = 0;
+
+                let y_mask = (!((1 << sy) - 1)) & 0xFFFF;
+                quads.push(CoverageQuad {
+                    x: prev_x.max(tx) as _,
+                    y: prev_y as _,
+                    winding: winding_y,
+                    coverage: Coverage::Mask(y_mask | (y_mask << 16)),
+                });
+            }
         }
+
+        let loc = SAMPLE_LOCATIONS[sy as usize];
+        if loc >= sx {
+            mask |= 1 << sy;
+        }
+        if loc + 8 >= sx {
+            mask |= 1 << (sy + 16);
+        }
+
+        x += dx;
+        prev_x = tx;
+        prev_y = ty;
     }
 
-    quads
+    if mask != 0 {
+        quads.push(CoverageQuad {
+            x: prev_x as _,
+            y: prev_y as _,
+            winding: winding_x,
+            coverage: Coverage::Mask(mask),
+        });
+    }
+
+    dbg!(&quads);
+
+    (quads, intersects)
 }
 
 fn draw_rect(target: &mut Image, x: Range<u32>, y: Range<u32>, color: rgbaf32) {
@@ -209,9 +267,9 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
 
     draw_rect(&mut output, 10..40, 10..20, rgbaf32::WHITE);
 
-    let cx = 100.0;
+    let cx = 101.0;
     let cy = 100.0;
-    let size = 50.0;
+    let size = 10.0;
 
     let path = [
         [
@@ -257,98 +315,111 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
     ];
 
     let mut quads = Vec::default();
+    let mut intersects = Vec::default();
     for [p0, p1] in path {
-        quads.extend(traverse_line(frame_params, p0, p1));
+        let (path_quads, path_intersects) = traverse_line(frame_params, p0, p1);
+        quads.extend(path_quads);
+        intersects.extend(path_intersects);
     }
 
-    // Build tiles from quad ranges later used
-    // for backdrop calculation to fill in spans.
-    //
-    // Should be inlined in the quad generation later on
-    // to minimize the amount of pipeline steps.
-    let mut tiles = Vec::default();
+    intersects.sort_by(|a, b| a.y.cmp(&b.y).then(a.x.cmp(&b.x)));
+    dbg!(&intersects);
 
-    let mut tile_dir = quads[0].dir;
-    let mut tile_x = quads[0].x / TILE_SIZE;
-    let mut tile_y = quads[0].y / TILE_SIZE;
-    let mut tile_mask = 0;
-    let mut tile_start = 0;
-    for (i, quad) in quads.iter().enumerate() {
-        let x = quad.x / TILE_SIZE;
-        let y = quad.y / TILE_SIZE;
-
-        let qx = quad.x % TILE_SIZE;
-        let qy = quad.y % TILE_SIZE;
-        let quad_mask = qy * TILE_SIZE + qx;
-
-        if x != tile_x || y != tile_y || quad.dir != tile_dir {
-            tiles.push(Tile {
-                x: tile_x,
-                y: tile_y,
-                quad_start: tile_start,
-                quad_mask: tile_mask,
-            });
-
-            tile_x = x;
-            tile_y = y;
-            tile_mask = 1u64 << quad_mask;
-            tile_dir = quad.dir;
-            tile_start = i as _;
+    // Visualize intersects
+    let mut prev_x = intersects[0].x;
+    let mut prev_y = intersects[0].y;
+    let mut winding = 0i32;
+    for intersect in intersects {
+        if intersect.y != prev_y {
+            winding = intersect.winding;
         } else {
-            tile_mask |= 1u64 << quad_mask;
+            dbg!((winding, intersect.winding));
+            if winding != 0 {
+                for x in prev_x..intersect.x {
+                    quads.push(CoverageQuad {
+                        x: x,
+                        y: intersect.y,
+                        winding: winding.signum(),
+                        coverage: Coverage::Fill(winding.abs() as _),
+                    });
+                    // for iy in 0..QUAD_SIZE {
+                    //     for ix in 0..QUAD_SIZE {
+                    //         let idx = (
+                    //             x as u32 * QUAD_SIZE + ix,
+                    //             intersect.y as u32 * QUAD_SIZE + iy,
+                    //         );
+                    //         output[idx] = rgbaf32 {
+                    //             r: 1.0,
+                    //             g: 1.0,
+                    //             b: 1.0,
+                    //             a: 1.0,
+                    //         };
+                    //     }
+                    // }
+                }
+            }
+            winding += intersect.winding;
         }
-    }
 
-    if tile_mask != 0 {
-        tiles.push(Tile {
-            x: tile_x,
-            y: tile_y,
-            quad_start: tile_start,
-            quad_mask: tile_mask,
-        });
+        prev_x = intersect.x;
+        prev_y = intersect.y;
     }
 
     // Sort tile (path/y/x) to generate y-spans in the next step
-    tiles.sort_by(|a, b| a.y.cmp(&b.y).then(a.x.cmp(&b.x)));
+    quads.sort_by(|a, b| a.y.cmp(&b.y).then(a.x.cmp(&b.x)));
 
-    // Visualize tiles
-    const TILE_PIXELS: u32 = TILE_SIZE as u32 * QUAD_SIZE as u32;
+    let mut prev_x = quads[0].x;
+    let mut prev_y = quads[0].y;
+    let mut winding = [0i32; 32];
 
-    for (i, tile) in tiles.iter().enumerate() {
-        let f = i as f32 / tiles.len() as f32;
-        draw_rect(
-            &mut output,
-            (tile.x as u32 * TILE_PIXELS)..(tile.x + 1) as u32 * TILE_PIXELS,
-            (tile.y as u32 * TILE_PIXELS)..(tile.y + 1) as u32 * TILE_PIXELS,
-            rgbaf32 {
-                r: 1.0 - f,
-                g: f,
-                b: 0.26,
-                a: 1.0,
-            },
-        );
-    }
+    dbg!(&quads);
 
     // Visualize local coverage quads
     for quad in quads {
-        for iy in 0..QUAD_SIZE {
-            for ix in 0..QUAD_SIZE {
-                let idx = (
-                    quad.x as u32 * QUAD_SIZE + ix,
-                    quad.y as u32 * QUAD_SIZE + iy,
-                );
-                let s = iy * QUAD_SIZE + ix;
+        if prev_x != quad.x || prev_y != quad.y {
+            for iy in 0..QUAD_SIZE {
+                for ix in 0..QUAD_SIZE {
+                    let idx = (
+                        prev_x as u32 * QUAD_SIZE + ix,
+                        prev_y as u32 * QUAD_SIZE + iy,
+                    );
+                    let s = iy + ix * QUAD_SIZE;
 
-                // Split sample mask into pixel.
-                let samples = (quad.samples >> (s * 8)) & 0xFF;
-                let coverage = samples.count_ones() as f32 / 7.0;
+                    // Split sample mask into pixel.
+                    let mut samples = 0;
+                    for i in (s * 8)..((s + 1) * 8) {
+                        if winding[i as usize] != 0 {
+                            samples += 1;
+                        }
+                    }
+                    let coverage = samples as f32 / 7.0;
 
-                output[idx] = rgbaf32 {
-                    r: coverage,
-                    g: coverage,
-                    b: coverage,
-                    a: 1.0,
-                };
+                    output[idx] = rgbaf32 {
+                        r: coverage,
+                        g: coverage,
+                        b: coverage,
+                        a: 1.0,
+                    };
+                }
+            }
+
+            prev_x = quad.x;
+            prev_y = quad.y;
+            winding = [0; 32];
+        }
+
+        match quad.coverage {
+            Coverage::Fill(num) => {
+                for s in 0..32 {
+                    winding[s] += num as i32 * quad.winding;
+                }
+            }
+            Coverage::Mask(mask) => {
+                for s in 0..32 {
+                    if mask & (1 << s) != 0 {
+                        winding[s] += quad.winding;
+                    }
+                }
             }
         }
     }
