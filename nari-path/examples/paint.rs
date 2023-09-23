@@ -133,7 +133,7 @@ fn traverse_line(frame: FrameParams, p0: vec2, p1: vec2) -> (Vec<CoverageQuad>, 
     let winding_x = if dy > 0.0 { 1 } else { -1 };
     let winding_y = if dx > 0.0 { -1 } else { 1 };
 
-    let (y0, y1, mut x, ty0, ty1, mut tx, dx) = if p0.y < p1.y {
+    let (y0, y1, mut x, dx) = if p0.y < p1.y {
         let dx = (p1.x - p0.x) / (p1.y - p0.y);
 
         let py = p0.y * 8.0 - 0.5;
@@ -141,12 +141,7 @@ fn traverse_line(frame: FrameParams, p0: vec2, p1: vec2) -> (Vec<CoverageQuad>, 
         let y1 = (p1.y * 8.0 - 0.5).ceil();
         let x = p0.x * 8.0 - 0.5 + (y0 - py) * dx;
 
-        let py = p0.y / 2.0;
-        let ty0 = (p0.y / 2.0).ceil();
-        let ty1 = (p1.y / 2.0).ceil();
-        let tx = p0.x / 2.0 + (y0 - py) * dx;
-
-        (y0, y1, x, ty0, ty1, tx, dx)
+        (y0, y1, x, dx)
     } else {
         let dx = (p0.x - p1.x) / (p0.y - p1.y);
 
@@ -155,12 +150,7 @@ fn traverse_line(frame: FrameParams, p0: vec2, p1: vec2) -> (Vec<CoverageQuad>, 
         let y1 = (p0.y * 8.0 + 0.5).floor();
         let x = p1.x * 8.0 - 0.5 + (y0 - py) * dx;
 
-        let py = p1.y / 2.0;
-        let ty0 = (p1.y / 2.0 + 1.0).floor();
-        let ty1 = (p0.y / 2.0 + 1.0).floor();
-        let tx = p1.x / 2.0 + (y0 - py) * dx;
-
-        (y0, y1, x, ty0, ty1, tx, dx)
+        (y0, y1, x, dx)
     };
 
     let mut mask = 0u32;
@@ -184,7 +174,6 @@ fn traverse_line(frame: FrameParams, p0: vec2, p1: vec2) -> (Vec<CoverageQuad>, 
 
         {
             if ty != prev_y {
-                dbg!((prev_y, mask));
                 quads.push(CoverageQuad {
                     x: prev_x as _,
                     y: prev_y as _,
@@ -194,7 +183,6 @@ fn traverse_line(frame: FrameParams, p0: vec2, p1: vec2) -> (Vec<CoverageQuad>, 
 
                 mask = 0;
             } else if tx != prev_x {
-                dbg!((prev_x, mask));
                 quads.push(CoverageQuad {
                     x: prev_x as _,
                     y: prev_y as _,
@@ -235,8 +223,6 @@ fn traverse_line(frame: FrameParams, p0: vec2, p1: vec2) -> (Vec<CoverageQuad>, 
         });
     }
 
-    dbg!(&quads);
-
     (quads, intersects)
 }
 
@@ -267,9 +253,9 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
 
     draw_rect(&mut output, 10..40, 10..20, rgbaf32::WHITE);
 
-    let cx = 101.0;
+    let cx = 100.0;
     let cy = 100.0;
-    let size = 10.0;
+    let size = 50.0;
 
     let path = [
         [
@@ -323,7 +309,6 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
     }
 
     intersects.sort_by(|a, b| a.y.cmp(&b.y).then(a.x.cmp(&b.x)));
-    dbg!(&intersects);
 
     // Visualize intersects
     let mut prev_x = intersects[0].x;
@@ -333,7 +318,6 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
         if intersect.y != prev_y {
             winding = intersect.winding;
         } else {
-            dbg!((winding, intersect.winding));
             if winding != 0 {
                 for x in prev_x..intersect.x {
                     quads.push(CoverageQuad {
@@ -371,8 +355,6 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
     let mut prev_x = quads[0].x;
     let mut prev_y = quads[0].y;
     let mut winding = [0i32; 32];
-
-    dbg!(&quads);
 
     // Visualize local coverage quads
     for quad in quads {
@@ -421,6 +403,32 @@ fn draw(width: u32, height: u32) -> Vec<u32> {
                     }
                 }
             }
+        }
+    }
+
+    for iy in 0..QUAD_SIZE {
+        for ix in 0..QUAD_SIZE {
+            let idx = (
+                prev_x as u32 * QUAD_SIZE + ix,
+                prev_y as u32 * QUAD_SIZE + iy,
+            );
+            let s = iy + ix * QUAD_SIZE;
+
+            // Split sample mask into pixel.
+            let mut samples = 0;
+            for i in (s * 8)..((s + 1) * 8) {
+                if winding[i as usize] != 0 {
+                    samples += 1;
+                }
+            }
+            let coverage = samples as f32 / 7.0;
+
+            output[idx] = rgbaf32 {
+                r: coverage,
+                g: coverage,
+                b: coverage,
+                a: 1.0,
+            };
         }
     }
 
