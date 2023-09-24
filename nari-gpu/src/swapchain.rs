@@ -28,14 +28,12 @@ impl Swapchain {
         height: u32,
         present_mode: vk::PresentModeKHR,
     ) -> anyhow::Result<Self> {
+        let surface = instance.surface.expect("headless instance has no surface");
         let swapchain_fn = khr::Swapchain::new(&instance.instance, &device.device);
         let swapchain_desc = {
             let surface_capabilities = instance
                 .surface_fn
-                .get_physical_device_surface_capabilities(
-                    instance.physical_device,
-                    instance.surface,
-                )?;
+                .get_physical_device_surface_capabilities(instance.physical_device, surface)?;
 
             // supported on all platforms we care (excludes android)
             let surface_format = vk::SurfaceFormatKHR {
@@ -44,7 +42,7 @@ impl Swapchain {
             };
 
             vk::SwapchainCreateInfoKHR::default()
-                .surface(instance.surface)
+                .surface(surface)
                 .min_image_count(3)
                 .image_format(surface_format.format)
                 .image_color_space(surface_format.color_space)

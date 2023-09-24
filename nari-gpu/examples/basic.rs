@@ -6,7 +6,7 @@ fn main() -> anyhow::Result<()> {
     let platform = Platform::new();
 
     unsafe {
-        let instance = gpu::Instance::new(&platform.surface)?;
+        let instance = gpu::Instance::with_surface(&platform.surface)?;
         let shader_path = Path::new("assets/shaders");
         let mut gpu = gpu::Gpu::new(&instance, shader_path)?;
 

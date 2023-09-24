@@ -2,14 +2,16 @@ use ash::{
     extensions::{ext, khr},
     vk,
 };
-use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+use raw_window_handle::{
+    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
+};
 use std::ffi::CStr;
 
 pub struct Instance {
     #[allow(dead_code)]
     pub entry: ash::Entry,
     pub instance: ash::Instance,
-    pub surface: ash::vk::SurfaceKHR,
+    pub surface: Option<ash::vk::SurfaceKHR>,
     pub surface_fn: khr::Surface,
     pub physical_device: ash::vk::PhysicalDevice,
     pub device_id: usize,
@@ -19,8 +21,21 @@ pub struct Instance {
 }
 
 impl Instance {
-    pub unsafe fn new(
+    pub unsafe fn with_surface(
         window: &(impl HasRawWindowHandle + HasRawDisplayHandle),
+    ) -> anyhow::Result<Self> {
+        Self::new(Some((
+            window.raw_window_handle(),
+            window.raw_display_handle(),
+        )))
+    }
+
+    pub unsafe fn headless() -> anyhow::Result<Self> {
+        Self::new(None)
+    }
+
+    unsafe fn new(
+        surface_handle: Option<(RawWindowHandle, RawDisplayHandle)>,
     ) -> anyhow::Result<Self> {
         let entry = ash::Entry::load()?;
         let instance_extensions = entry.enumerate_instance_extension_properties(None)?;
@@ -30,9 +45,11 @@ impl Instance {
                 .any(|ext| CStr::from_ptr(ext.extension_name.as_ptr()) == extension)
         };
 
-        let surface_extensions =
-            ash_window::enumerate_required_extensions(window.raw_display_handle())?;
-        let mut extensions = surface_extensions.to_vec();
+        let mut extensions = Vec::default();
+        if let Some((_, display)) = surface_handle {
+            let surface_extensions = ash_window::enumerate_required_extensions(display)?;
+            extensions.extend(surface_extensions);
+        }
 
         let supports_debug_utils = supports_extension(ext::DebugUtils::name());
         if supports_debug_utils {
@@ -45,13 +62,13 @@ impl Instance {
             .enabled_extension_names(&extensions);
         let instance = entry.create_instance(&instance_desc, None)?;
 
-        let surface = ash_window::create_surface(
-            &entry,
-            &instance,
-            window.raw_display_handle(),
-            window.raw_window_handle(),
-            None,
-        )?;
+        let surface = if let Some((window, display)) = surface_handle {
+            Some(ash_window::create_surface(
+                &entry, &instance, display, window, None,
+            )?)
+        } else {
+            None
+        };
         let surface_fn = khr::Surface::new(&entry, &instance);
 
         let (physical_device, device_id, family_index, _family_properties) = instance
@@ -67,11 +84,20 @@ impl Instance {
                         let universal = family
                             .queue_flags
                             .contains(vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE);
-                        let surface_support = surface_fn
-                            .get_physical_device_surface_support(device, *i as _, surface)
-                            .unwrap();
+                        if !universal {
+                            return false;
+                        }
 
-                        universal && surface_support
+                        if let Some(surface) = surface {
+                            let surface_support = surface_fn
+                                .get_physical_device_surface_support(device, *i as _, surface)
+                                .unwrap();
+                            if !surface_support {
+                                return false;
+                            }
+                        }
+
+                        true
                     })
                     .map(|(index, family)| (device, device_id, index as u32, family))
             })
