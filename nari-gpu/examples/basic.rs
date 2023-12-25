@@ -69,6 +69,7 @@ fn main() -> anyhow::Result<()> {
                         }],
                     );
                     gpu.cmd_set_scissor(pool.cmd_buffer, 0, &[area]);
+                    let _t0 = gpu.cmd_timestamp(pool, gpu::Stage::TOP_OF_PIPE);
                     gpu.cmd_graphics_begin(
                         pool,
                         area,
@@ -101,23 +102,34 @@ fn main() -> anyhow::Result<()> {
                             },
                         }],
                     );
+                    let _t1 = gpu.cmd_timestamp(pool, gpu::Stage::BOTTOM_OF_PIPE);
 
-                    gpu.submit_pool(
-                        pool,
-                        gpu::Submit {
-                            waits: &[gpu::SemaphoreSubmit {
-                                semaphore: frame.acquire,
-                                stage: gpu::Stage::COLOR_ATTACHMENT_OUTPUT,
-                            }],
-                            signals: &[gpu::SemaphoreSubmit {
-                                semaphore: frame.present,
-                                stage: gpu::Stage::COLOR_ATTACHMENT_OUTPUT,
-                            }],
-                        },
-                    )
-                    .unwrap();
+                    let t_gpu = gpu
+                        .submit_pool(
+                            pool,
+                            gpu::Submit {
+                                waits: &[gpu::SemaphoreSubmit {
+                                    semaphore: frame.acquire,
+                                    stage: gpu::Stage::COLOR_ATTACHMENT_OUTPUT,
+                                }],
+                                signals: &[gpu::SemaphoreSubmit {
+                                    semaphore: frame.present,
+                                    stage: gpu::Stage::COLOR_ATTACHMENT_OUTPUT,
+                                }],
+                            },
+                        )
+                        .unwrap();
 
                     wsi.present(&gpu, frame).unwrap();
+                    if t_gpu > 3 {
+                        let submission = gpu.wait(t_gpu - 3).unwrap();
+                        for (_, ts) in submission.timestamps {
+                            dbg!((ts[1] - ts[0]) * 1000.0); // ms
+                        }
+                    }
+                }
+                Event::MouseMove => {
+                    event_loop.surface.redraw();
                 }
                 _ => (),
             }

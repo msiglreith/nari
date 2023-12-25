@@ -18,6 +18,7 @@ pub struct Instance {
     pub family_index: u32,
     instance_extensions: Vec<vk::ExtensionProperties>,
     device_extensions: Vec<vk::ExtensionProperties>,
+    pub device_properties: vk::PhysicalDeviceProperties,
 }
 
 impl Instance {
@@ -104,6 +105,7 @@ impl Instance {
             .unwrap();
 
         let device_extensions = instance.enumerate_device_extension_properties(physical_device)?;
+        let device_properties = instance.get_physical_device_properties(physical_device);
 
         Ok(Instance {
             entry,
@@ -115,6 +117,7 @@ impl Instance {
             family_index,
             instance_extensions,
             device_extensions,
+            device_properties,
         })
     }
 

@@ -1,11 +1,13 @@
-use crate as gpu;
+use crate::{self as gpu, QueryId, SubmissionResult};
 use ash::{
     extensions::{ext, khr, nv},
     vk,
     vk::Handle,
 };
 use gpu_allocator::vulkan::{Allocation, Allocator, AllocatorCreateDesc};
-use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+};
 use std::{
     ffi::CString,
     path::{Path, PathBuf},
@@ -15,6 +17,8 @@ pub struct Extensions {
     pub debug_utils: Option<ext::DebugUtils>,
     pub mesh_shader: Option<nv::MeshShader>,
 }
+
+const POOL_TIMESTAMPS: u32 = 128;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum PoolState {
@@ -35,6 +39,8 @@ struct PoolData {
     state: PoolState,
     cmd_pool: vk::CommandPool,
     cmd_buffer: gpu::CommandBuffer,
+    queries: vk::QueryPool,
+    num_queries: u32,
     shrine: Shrine,
 }
 
@@ -59,6 +65,8 @@ pub struct Gpu {
     pub allocator: Allocator,
     spv_dir: PathBuf,
 
+    timestamp_rate: f64,
+
     // Queue
     pub queue: vk::Queue,
     queue_family_index: u32,
@@ -68,8 +76,10 @@ pub struct Gpu {
 
     // Resources
     pub descriptor_pool: vk::DescriptorPool,
+    pub descriptors_buffer: gpu::Descriptors,
     pub descriptors_sampled_image: gpu::Descriptors,
     pub descriptors_storage_image: gpu::Descriptors,
+    addresses_buffer: HashMap<vk::Buffer, gpu::ImageAddress>,
     addresses_sampled_image: HashMap<(vk::ImageView, vk::Sampler), gpu::ImageAddress>,
     addresses_storage_image: HashMap<vk::ImageView, gpu::ImageAddress>,
 
@@ -108,6 +118,7 @@ impl Gpu {
                 .shader_storage_buffer_array_non_uniform_indexing(true)
                 .descriptor_binding_storage_buffer_update_after_bind(true)
                 .imageless_framebuffer(true)
+                .host_query_reset(true)
                 .vulkan_memory_model(true);
             let mut features13 = vk::PhysicalDeviceVulkan13Features::default()
                 .robust_image_access(true)
@@ -146,11 +157,16 @@ impl Gpu {
         let ext_mesh_shader =
             supports_mesh_shader.then(|| nv::MeshShader::new(&instance.instance, &device));
 
+        const BUFFER_COUNT: u32 = 64 * 1024;
         const SAMPLED_IMAGE_COUNT: u32 = 64 * 1024;
         const STORAGE_IMAGE_COUNT: u32 = 64 * 1024;
 
         let descriptor_pool = {
             let pool_sizes = [
+                vk::DescriptorPoolSize {
+                    ty: vk::DescriptorType::STORAGE_BUFFER,
+                    descriptor_count: BUFFER_COUNT,
+                },
                 vk::DescriptorPoolSize {
                     ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
                     descriptor_count: SAMPLED_IMAGE_COUNT,
@@ -161,10 +177,28 @@ impl Gpu {
                 },
             ];
             let desc = vk::DescriptorPoolCreateInfo::default()
-                .max_sets(2)
+                .max_sets(3)
                 .pool_sizes(&pool_sizes)
                 .flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND);
             device.create_descriptor_pool(&desc, None)?
+        };
+
+        let buffer_layout = {
+            let binding_flags = [vk::DescriptorBindingFlags::PARTIALLY_BOUND; 1];
+            let mut flag_desc = vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
+                .binding_flags(&binding_flags);
+
+            let bindings = [vk::DescriptorSetLayoutBinding::default()
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                .binding(0)
+                .descriptor_count(BUFFER_COUNT)
+                .stage_flags(vk::ShaderStageFlags::ALL)];
+
+            let desc = vk::DescriptorSetLayoutCreateInfo::default()
+                .bindings(&bindings)
+                .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
+                .push_next(&mut flag_desc);
+            device.create_descriptor_set_layout(&desc, None)?
         };
 
         let sampled_image_layout = {
@@ -204,7 +238,7 @@ impl Gpu {
         };
 
         let sets = {
-            let layouts = [sampled_image_layout, storage_image_layout];
+            let layouts = [buffer_layout, sampled_image_layout, storage_image_layout];
 
             let desc = vk::DescriptorSetAllocateInfo::default()
                 .set_layouts(&layouts)
@@ -229,15 +263,20 @@ impl Gpu {
             device.create_semaphore(&desc, None)?
         };
 
+        let gpu_buffers = gpu::descriptor::GpuDescriptors {
+            layout: buffer_layout,
+            set: sets[0],
+        };
         let gpu_sampled_images = gpu::descriptor::GpuDescriptors {
             layout: sampled_image_layout,
-            set: sets[0],
+            set: sets[1],
         };
         let gpu_storage_images = gpu::descriptor::GpuDescriptors {
             layout: storage_image_layout,
-            set: sets[1],
+            set: sets[2],
         };
 
+        let descriptors_buffer = gpu::Descriptors::new(BUFFER_COUNT as _, gpu_buffers);
         let descriptors_sampled_image =
             gpu::Descriptors::new(SAMPLED_IMAGE_COUNT as _, gpu_sampled_images);
         let descriptors_storage_image =
@@ -253,11 +292,14 @@ impl Gpu {
                 debug_utils: ext_debug_utils,
                 mesh_shader: ext_mesh_shader,
             },
+            timestamp_rate: instance.device_properties.limits.timestamp_period as f64 / 1.0e9,
             timeline_value: 0,
             spv_dir: spv_dir.to_path_buf(),
             descriptor_pool,
+            descriptors_buffer,
             descriptors_sampled_image,
             descriptors_storage_image,
+            addresses_buffer: Default::default(),
             addresses_sampled_image: Default::default(),
             addresses_storage_image: Default::default(),
             layouts: Default::default(),
@@ -265,9 +307,30 @@ impl Gpu {
         })
     }
 
-    pub unsafe fn buffer_address(&self, buffer: &gpu::Buffer) -> gpu::DeviceAddress {
-        let desc = vk::BufferDeviceAddressInfo::default().buffer(buffer.buffer);
-        self.get_buffer_device_address(&desc)
+    pub unsafe fn buffer_address(&mut self, buffer: &gpu::Buffer) -> gpu::BufferAddress {
+        // let desc = vk::BufferDeviceAddressInfo::default().buffer(buffer.buffer);
+        // self.get_buffer_device_address(&desc)
+
+        match self.addresses_buffer.entry(buffer.buffer) {
+            Entry::Occupied(entry) => *entry.get(),
+            Entry::Vacant(entry) => {
+                let descriptor = self.descriptors_buffer.create();
+                let buffer_infos = [vk::DescriptorBufferInfo {
+                    buffer: buffer.buffer,
+                    offset: 0,
+                    range: vk::WHOLE_SIZE,
+                }];
+                let updates = [vk::WriteDescriptorSet::default()
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                    .dst_set(self.descriptors_buffer.gpu.set)
+                    .dst_binding(0)
+                    .dst_array_element(descriptor)
+                    .buffer_info(&buffer_infos)];
+                self.device.update_descriptor_sets(&updates, &[]);
+
+                *entry.insert(descriptor)
+            }
+        }
     }
 
     pub unsafe fn sampled_image_address(
@@ -430,15 +493,63 @@ impl Gpu {
         Ok(buffer)
     }
 
+    pub unsafe fn create_buffer_download(
+        &mut self,
+        name: &str,
+        size: usize,
+        mut usage: gpu::BufferUsageFlags,
+        initialization: gpu::BufferDownloadInit,
+    ) -> anyhow::Result<gpu::Buffer> {
+        usage |= gpu::BufferUsageFlags::TRANSFER_DST;
+
+        let buffer = {
+            let desc = vk::BufferCreateInfo::default().size(size as _).usage(usage);
+            let buffer = self.create_buffer(&desc, None)?;
+            let alloc_desc = gpu_allocator::vulkan::AllocationCreateDesc {
+                name,
+                requirements: self.get_buffer_memory_requirements(buffer),
+                location: gpu_allocator::MemoryLocation::GpuToCpu,
+                linear: true,
+                allocation_scheme: gpu_allocator::vulkan::AllocationScheme::GpuAllocatorManaged,
+            };
+            let allocation = self.allocator.allocate(&alloc_desc)?;
+            self.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())?;
+            gpu::Buffer { buffer, allocation }
+        };
+
+        self.name_object(vk::ObjectType::BUFFER, buffer.buffer.as_raw(), name)?;
+
+        match initialization {
+            gpu::BufferDownloadInit::Device {
+                pool,
+                buffer: buffer_init,
+            } => {
+                self.cmd_copy_buffer(
+                    pool.cmd_buffer,
+                    buffer_init.buffer,
+                    buffer.buffer,
+                    &[vk::BufferCopy {
+                        src_offset: 0,
+                        dst_offset: 0,
+                        size: size as _,
+                    }],
+                );
+            }
+            gpu::BufferDownloadInit::None => (),
+        }
+
+        Ok(buffer)
+    }
+
     pub unsafe fn create_buffer_gpu(
         &mut self,
         name: &str,
         size: usize,
         mut usage: gpu::BufferUsageFlags,
-        initialization: gpu::BufferInit,
+        initialization: gpu::BufferGpuInit,
     ) -> anyhow::Result<gpu::Buffer> {
         usage |= gpu::BufferUsageFlags::SHADER_DEVICE_ADDRESS;
-        if let gpu::BufferInit::Host { .. } = &initialization {
+        if let gpu::BufferGpuInit::Host { .. } = &initialization {
             usage |= gpu::BufferUsageFlags::TRANSFER_DST;
         }
 
@@ -460,7 +571,7 @@ impl Gpu {
         self.name_object(vk::ObjectType::BUFFER, buffer.buffer.as_raw(), name)?;
 
         match initialization {
-            gpu::BufferInit::Host { pool, data } => {
+            gpu::BufferGpuInit::Host { pool, data } => {
                 let buffer_init = {
                     let desc = vk::BufferCreateInfo::default()
                         .size(data.len() as _)
@@ -496,7 +607,7 @@ impl Gpu {
 
                 self.cmd_retire_buffer(pool, buffer_init);
             }
-            gpu::BufferInit::None => (),
+            gpu::BufferGpuInit::None => (),
         }
 
         Ok(buffer)
@@ -643,6 +754,7 @@ impl Gpu {
                     );
                 }
                 let set_layouts = [
+                    self.descriptors_buffer.gpu.layout,
                     self.descriptors_sampled_image.gpu.layout,
                     self.descriptors_storage_image.gpu.layout,
                 ];
@@ -703,6 +815,7 @@ impl Gpu {
                     );
                 }
                 let set_layouts = [
+                    self.descriptors_buffer.gpu.layout,
                     self.descriptors_sampled_image.gpu.layout,
                     self.descriptors_storage_image.gpu.layout,
                 ];
@@ -824,16 +937,21 @@ impl Gpu {
         layout: vk::PipelineLayout,
     ) {
         let sets = [
+            self.descriptors_buffer.gpu.set,
             self.descriptors_sampled_image.gpu.set,
             self.descriptors_storage_image.gpu.set,
         ];
         self.cmd_bind_descriptor_sets(cmd_buffer, pipeline, layout, 0, &sets, &[]);
     }
 
-    pub unsafe fn wait(&mut self, t: crate::Timestamp) -> anyhow::Result<()> {
+    pub unsafe fn wait(&mut self, t: crate::Timestamp) -> anyhow::Result<SubmissionResult> {
+        let mut result = SubmissionResult {
+            timestamps: HashMap::default(),
+        };
+
         if t == 0 {
             // initial case
-            return Ok(());
+            return Ok(result);
         }
 
         let semaphores = [self.timeline];
@@ -843,10 +961,31 @@ impl Gpu {
             .values(&wait_values);
         self.device.wait_semaphores(&wait_info, !0)?;
 
-        for pool in &mut self.pools {
+        for pool in self.pools.iter_mut() {
             if let PoolState::Executing(t_pool) = pool.state {
                 if t_pool > t {
                     continue;
+                }
+
+                if pool.num_queries > 0 {
+                    let mut timestamps_u64 = vec![0u64; pool.num_queries as usize];
+                    self.device.get_query_pool_results(
+                        pool.queries,
+                        0,
+                        &mut timestamps_u64,
+                        vk::QueryResultFlags::TYPE_64 | vk::QueryResultFlags::WAIT,
+                    )?;
+                    result.timestamps.insert(
+                        t_pool,
+                        timestamps_u64
+                            .into_iter()
+                            .map(|t| t as f64 * self.timestamp_rate)
+                            .collect(),
+                    );
+
+                    self.device
+                        .reset_query_pool(pool.queries, 0, pool.num_queries);
+                    pool.num_queries = 0;
                 }
 
                 self.device
@@ -868,7 +1007,7 @@ impl Gpu {
                 pool.state = PoolState::Free;
             }
         }
-        Ok(())
+        Ok(result)
     }
 
     pub unsafe fn acquire_pool(&mut self) -> anyhow::Result<Pool> {
@@ -888,11 +1027,21 @@ impl Gpu {
                         .command_buffer_count(1);
                     self.device.allocate_command_buffers(&desc)?[0]
                 };
+                let queries = {
+                    let info = vk::QueryPoolCreateInfo::default()
+                        .query_type(vk::QueryType::TIMESTAMP)
+                        .query_count(POOL_TIMESTAMPS);
+                    let queries = self.create_query_pool(&info, None)?;
+                    self.device.reset_query_pool(queries, 0, POOL_TIMESTAMPS);
+                    queries
+                };
 
                 self.pools.push(PoolData {
                     state: PoolState::Free,
                     cmd_pool,
                     cmd_buffer,
+                    queries,
+                    num_queries: 0,
                     shrine: Shrine::default(),
                 });
                 self.pools.len() - 1
@@ -1119,6 +1268,18 @@ impl Gpu {
             .memory_barriers(&memory_barriers)
             .image_memory_barriers(&image_barriers);
         self.cmd_pipeline_barrier2(pool.cmd_buffer, &dependency);
+    }
+
+    pub unsafe fn cmd_timestamp(&mut self, pool: gpu::Pool, stage: gpu::Stage) -> QueryId {
+        let query_idx = self.pools[pool.id].num_queries;
+        self.pools[pool.id].num_queries += 1;
+        self.cmd_write_timestamp2(
+            pool.cmd_buffer,
+            stage,
+            self.pools[pool.id].queries,
+            query_idx,
+        );
+        query_idx
     }
 }
 

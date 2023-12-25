@@ -18,13 +18,16 @@ pub use ash::vk::{
 };
 
 pub type DeviceAddress = u64;
+pub type BufferAddress = u32;
 pub type ImageAddress = u32;
 pub type Timestamp = u64;
+pub type QueryId = u32;
 
 // Re-export dependencies
 pub use ash::vk;
 pub use gpu_allocator::{vulkan::*, MemoryLocation};
 
+use std::collections::HashMap;
 use std::ops::Range;
 
 /// View a slice as raw byte slice.
@@ -34,6 +37,11 @@ use std::ops::Range;
 pub fn as_u8_slice<T>(data: &[T]) -> &[u8] {
     let len = std::mem::size_of::<T>() * data.len();
     unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, len) }
+}
+
+pub fn as_u8_slice_mut<T>(data: &mut [T]) -> &mut [u8] {
+    let len = std::mem::size_of::<T>() * data.len();
+    unsafe { std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut u8, len) }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -46,6 +54,10 @@ pub struct SemaphoreSubmit {
 pub struct Submit<'a> {
     pub waits: &'a [SemaphoreSubmit],
     pub signals: &'a [SemaphoreSubmit],
+}
+
+pub struct SubmissionResult {
+    pub timestamps: HashMap<Timestamp, Vec<f64>>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -76,8 +88,14 @@ impl MemoryBarrier {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum BufferInit<'a> {
+pub enum BufferGpuInit<'a> {
     Host { pool: Pool, data: &'a [u8] },
+    None,
+}
+
+#[derive(Debug)]
+pub enum BufferDownloadInit {
+    Device { pool: Pool, buffer: Buffer },
     None,
 }
 
@@ -85,6 +103,14 @@ pub enum BufferInit<'a> {
 pub struct Buffer {
     pub buffer: vk::Buffer,
     pub allocation: Allocation,
+}
+
+impl Buffer {
+    pub unsafe fn copy_to_slice<T>(&mut self, dst: &mut [T]) {
+        let dst = as_u8_slice_mut(dst);
+        let mapping = self.allocation.mapped_slice_mut().unwrap();
+        dst.copy_from_slice(mapping);
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
