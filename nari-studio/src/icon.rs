@@ -1,6 +1,6 @@
 use nari_vello::{
-    kurbo::{Affine, BezPath, Rect, Shape},
-    peniko::{Brush, Fill, Stroke},
+    kurbo::{Affine, BezPath, Rect, Shape, Stroke},
+    peniko::{Brush, Fill},
     SceneBuilder,
 };
 use usvg::TreeParsing;
@@ -79,7 +79,13 @@ impl Icon {
                 sb.fill(Fill::NonZero, transform, brush, None, &path.path);
             }
             if let Some(stroke) = path.stroke {
-                sb.stroke(&Stroke::new(stroke), transform, brush, None, &path.path);
+                sb.stroke(
+                    &Stroke::new(stroke.into()),
+                    transform,
+                    brush,
+                    None,
+                    &path.path,
+                );
             }
         }
     }

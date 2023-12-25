@@ -6,7 +6,6 @@ members = [
     "nari-studio",
     "nari-vello",
     "nari-path",
-    "nari-ir",
     "nari-gpu",
     "nari-ochre",
 ]
@@ -19,7 +18,7 @@ nari-ochre = { path = "nari-ochre" }
 nari-gpu = { path = "nari-gpu" }
 
 superluminal-perf = "0.2"
-vello = { git = "https://github.com/msiglreith/vello.git", branch = "nari" }
+vello = { git = "https://github.com/msiglreith/vello.git", branch = "nari_v2" }
 swash = { git = "https://github.com/msiglreith/swash.git", branch = "nari" }
 raw-window-handle = "0.5"
 anyhow = "1"

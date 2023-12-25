@@ -6,8 +6,8 @@ use nari_platform::{
     Platform, SurfaceArea,
 };
 use nari_vello::{
-    kurbo::{Affine, Point, Rect, RoundedRect},
-    peniko::{Brush, Color, Fill, Stroke},
+    kurbo::{Affine, Point, Rect, RoundedRect, Stroke},
+    peniko::{Brush, Color, Fill},
     typo::{Caret, FontScaled},
     Align, Canvas, Scene, SceneBuilder,
 };
@@ -149,7 +149,7 @@ impl TextCursor {
 struct Border;
 impl Border {
     const MARGIN: f64 = 5.0;
-    fn hittest(app: &App, p: [g64; 2]) -> Option<SurfaceArea> {
+    fn hittest(app: &App, p: Point) -> Option<SurfaceArea> {
         if app.event_loop.surface.is_maximized() {
             return None;
         }

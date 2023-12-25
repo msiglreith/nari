@@ -66,8 +66,10 @@ impl Canvas {
 
         let renderer = vello::Renderer::new(
             &device,
-            &RendererOptions {
+            RendererOptions {
                 surface_format: Some(wgpu::TextureFormat::Bgra8UnormSrgb),
+                use_cpu: false,
+                antialiasing_support: vello::AaSupport::area_only(),
             },
         )
         .unwrap();
@@ -102,6 +104,7 @@ impl Canvas {
                     base_color: background,
                     width: self.swapchain_config.width,
                     height: self.swapchain_config.height,
+                    antialiasing_method: AaConfig::Area,
                 },
             )
             .expect("failed to render to surface");
