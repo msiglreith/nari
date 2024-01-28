@@ -7,7 +7,7 @@ use wgpu::Texture;
 
 use self::{
     engine::Engine,
-    kurbo::Affine,
+    kurbo::{Affine, Point},
     peniko::{Brush, Color, Fill},
     typo::{Font, FontScaled, FontSize, GlyphCache, GlyphKey, TextRun},
 };
@@ -30,6 +30,7 @@ pub struct Canvas {
     engine: Pin<Box<Engine>>,
     renderer: vello::Renderer,
     glyph_cache: typo::GlyphCache,
+    scale: f64,
 }
 
 impl Canvas {
@@ -85,6 +86,7 @@ impl Canvas {
             engine,
             renderer,
             glyph_cache,
+            scale: surface.dpi(),
         }
     }
 
@@ -118,6 +120,14 @@ impl Canvas {
         self.swapchain_config.height = size.height as _;
         self.swapchain
             .configure(&self.device, &self.swapchain_config);
+    }
+
+    pub fn scale(&self, x: f64) -> f64 {
+        x * self.scale
+    }
+
+    pub fn scale_pt(&self, pt: Point) -> Point {
+        Point::new(self.scale(pt.x), self.scale(pt.y))
     }
 
     pub fn create_font(&mut self, data: Vec<u8>) -> Font {

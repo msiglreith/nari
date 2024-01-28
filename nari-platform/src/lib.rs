@@ -28,6 +28,7 @@ use windows_sys::Win32::{
             MAPVK_VK_TO_CHAR, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, VK_CONTROL, VK_DOWN,
             VK_LEFT, VK_MENU, VK_RIGHT, VK_SHIFT, VK_UP,
         },
+        HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext, GetDpiForWindow},
         WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
             GetWindowLongPtrW, GetWindowPlacement, LoadCursorW, PostMessageW, RegisterClassExW,
@@ -575,6 +576,12 @@ impl Surface {
         }
     }
 
+    pub fn dpi(&self) -> f64 {
+        unsafe {
+            GetDpiForWindow(self.hwnd) as f64 / 96.0
+        }
+    }
+
     pub fn redraw(&self) {
         unsafe {
             RedrawWindow(self.hwnd, ptr::null(), 0, RDW_INVALIDATE);
@@ -597,6 +604,8 @@ impl Platform {
             keydown_area: Cell::new(HTCLIENT as WPARAM),
             u16_surrogate: Cell::new(None),
         });
+
+        unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2); }
 
         unsafe {
             let hinstance = get_instance_handle();

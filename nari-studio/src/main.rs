@@ -193,52 +193,53 @@ impl Caption {
     const BUTTON_HEIGHT: f64 = 28.0;
     const CAPTION_HEIGHT: f64 = Self::BUTTON_HEIGHT;
 
-    fn button_minimize(extent: Extent) -> Rect {
+    fn button_minimize(canvas: &Canvas, extent: Extent) -> Rect {
         Rect {
-            x0: extent.width - 3.0 * Self::BUTTON_WIDTH,
-            x1: extent.width - 2.0 * Self::BUTTON_WIDTH,
+            x0: extent.width - 3.0 * canvas.scale(Self::BUTTON_WIDTH),
+            x1: extent.width - 2.0 * canvas.scale(Self::BUTTON_WIDTH),
             y0: 0.0,
-            y1: Self::BUTTON_HEIGHT,
+            y1: canvas.scale(Self::BUTTON_HEIGHT),
         }
     }
 
-    fn button_maximize(extent: Extent) -> Rect {
+    fn button_maximize(canvas: &Canvas, extent: Extent) -> Rect {
         Rect {
-            x0: extent.width - 2.0 * Self::BUTTON_WIDTH,
-            x1: extent.width - Self::BUTTON_WIDTH,
+            x0: extent.width - 2.0 * canvas.scale(Self::BUTTON_WIDTH),
+            x1: extent.width - canvas.scale(Self::BUTTON_WIDTH),
             y0: 0.0,
-            y1: Self::BUTTON_HEIGHT,
+            y1: canvas.scale(Self::BUTTON_HEIGHT),
         }
     }
 
-    fn button_close(extent: Extent) -> Rect {
+    fn button_close(canvas: &Canvas, extent: Extent) -> Rect {
         Rect {
-            x0: extent.width - Self::BUTTON_WIDTH,
+            x0: extent.width - canvas.scale(Self::BUTTON_WIDTH),
             x1: extent.width,
             y0: 0.0,
-            y1: Self::BUTTON_HEIGHT,
+            y1: canvas.scale(Self::BUTTON_HEIGHT),
         }
     }
 
     fn hittest(app: &App, p: Point) -> Option<SurfaceArea> {
         let extent = app.event_loop.surface.extent();
+        let canvas = &app.canvas;
 
-        let chrome_minimize = Self::button_minimize(extent);
+        let chrome_minimize = Self::button_minimize(canvas, extent);
         if chrome_minimize.contains(p) {
             return Some(SurfaceArea::Minimize);
         }
 
-        let chrome_maximize = Self::button_maximize(extent);
+        let chrome_maximize = Self::button_maximize(canvas, extent);
         if chrome_maximize.contains(p) {
             return Some(SurfaceArea::Maximize);
         }
 
-        let chrome_close = Self::button_close(extent);
+        let chrome_close = Self::button_close(canvas, extent);
         if chrome_close.contains(p) {
             return Some(SurfaceArea::Close);
         }
 
-        if p.y <= Self::CAPTION_HEIGHT {
+        if p.y <= canvas.scale(Self::CAPTION_HEIGHT) {
             return Some(SurfaceArea::Caption);
         }
 
@@ -247,6 +248,7 @@ impl Caption {
 
     fn paint(app: &mut App, mut sb: &mut SceneBuilder) {
         let extent = app.event_loop.surface.extent();
+        let canvas = &app.canvas;
 
         sb.fill(
             Fill::NonZero,
@@ -257,13 +259,13 @@ impl Caption {
                 x0: 0.0,
                 x1: extent.width,
                 y0: 0.0,
-                y1: Self::CAPTION_HEIGHT,
+                y1: canvas.scale(Self::CAPTION_HEIGHT),
             },
         );
 
-        let chrome_minimize = Self::button_minimize(extent);
-        let chrome_maximize = Self::button_maximize(extent);
-        let chrome_close = Self::button_close(extent);
+        let chrome_minimize = Self::button_minimize(canvas, extent);
+        let chrome_maximize = Self::button_maximize(canvas, extent);
+        let chrome_close = Self::button_close(canvas, extent);
 
         // hover background
         if let Some((x, y)) = app.event_loop.mouse_position {
@@ -297,12 +299,14 @@ impl Caption {
         }
 
         // show symbols
+        let affine_dpi = Affine::scale(canvas.scale(1.0));
+
         let affine_minimize = Affine::translate(
-            (chrome_minimize.center() - app.style.icon_chrome_minimize.bbox.center()).floor(),
+            (chrome_minimize.center() - canvas.scale_pt(app.style.icon_chrome_minimize.bbox.center())).floor(),
         );
         app.style.icon_chrome_minimize.paint(
             &mut sb,
-            affine_minimize,
+            affine_minimize * affine_dpi,
             &Brush::Solid(app.style.color_text),
         );
 
@@ -312,19 +316,19 @@ impl Caption {
             &app.style.icon_chrome_maximize
         };
         let affine_maximize =
-            Affine::translate((chrome_maximize.center() - icon_maximize.bbox.center()).floor());
+            Affine::translate((chrome_maximize.center() - canvas.scale_pt(icon_maximize.bbox.center())).floor());
         icon_maximize.paint(
             &mut sb,
-            affine_maximize,
+            affine_maximize * affine_dpi,
             &Brush::Solid(app.style.color_text),
         );
 
         let affine_close = Affine::translate(
-            (chrome_close.center() - app.style.icon_chrome_close.bbox.center()).floor(),
+            (chrome_close.center() - canvas.scale_pt(app.style.icon_chrome_close.bbox.center())).floor(),
         );
         app.style.icon_chrome_close.paint(
             &mut sb,
-            affine_close,
+            affine_close * affine_dpi,
             &Brush::Solid(app.style.color_text),
         );
     }
@@ -362,7 +366,21 @@ async fn run() -> anyhow::Result<()> {
     let icon_chrome_restore = Icon::build(&std::fs::read("assets/codicon/chrome-restore.svg")?)?;
 
     let font_body = canvas.create_font(std::fs::read("assets/Inter/Inter-Regular.ttf")?);
-    let font_body_regular = canvas.create_font_scaled(font_body, 16);
+    let font_body_regular = canvas.create_font_scaled(font_body, canvas.scale(16.0).round() as u32);
+
+    let mut text_cursor = TextCursor {
+        pen: canvas.scale_pt(Point::new(10.0, 50.0)),
+        cursor_pos: 0,
+        text: "hello world! ".to_string(),
+        focused: false,
+    };
+
+    let mut text_cursor2 = TextCursor {
+        pen: canvas.scale_pt(Point::new(10.0, 70.0)),
+        cursor_pos: 0,
+        text: "test row 2".to_string(),
+        focused: false,
+    };
 
     let mut app = App {
         canvas,
@@ -385,20 +403,6 @@ async fn run() -> anyhow::Result<()> {
             color_text_select: Color::rgb(0.22, 0.25, 0.27),
             color_cursor: Color::rgb(0.95, 1.0, 1.0),
         },
-    };
-
-    let mut text_cursor = TextCursor {
-        pen: Point::new(10.0, 50.0),
-        cursor_pos: 0,
-        text: "hello world! ".to_string(),
-        focused: false,
-    };
-
-    let mut text_cursor2 = TextCursor {
-        pen: Point::new(10.0, 70.0),
-        cursor_pos: 0,
-        text: "test row 2".to_string(),
-        focused: false,
     };
 
     let mut scene = Scene::default();
@@ -430,13 +434,13 @@ async fn run() -> anyhow::Result<()> {
                 text_cursor.paint(&mut app, &mut sb);
                 text_cursor2.paint(&mut app, &mut sb);
 
-                let pen = Affine::translate((30.0, 400.0));
+                let pen = Affine::translate((app.canvas.scale(30.0), app.canvas.scale(400.0)));
 
                 let text_run = app
                     .canvas
                     .build_text_run(app.style.font_regular, "New Task");
-                let bounds = text_run.bounds().inflate(10.0, 5.0);
-                let bounds_round = RoundedRect::from_rect(bounds, 6.0);
+                let bounds = text_run.bounds().inflate(app.canvas.scale(10.0), app.canvas.scale(5.0));
+                let bounds_round = RoundedRect::from_rect(bounds, app.canvas.scale(6.0));
 
                 sb.fill(
                     Fill::NonZero,
