@@ -1081,6 +1081,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nari-decor-basic"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "nari-platform",
+ "nari-vello",
+]
+
+[[package]]
 name = "nari-freetype"
 version = "0.1.0"
 dependencies = [
@@ -1115,8 +1124,12 @@ dependencies = [
 name = "nari-path"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "kurbo 0.9.5",
+ "nari-decor-basic",
  "nari-platform",
+ "nari-vello",
+ "pollster",
  "softbuffer 0.2.1",
 ]
 
@@ -1159,6 +1172,7 @@ dependencies = [
  "superluminal-perf",
  "swash",
  "unicode-segmentation",
+ "usvg 0.30.0",
  "vello",
  "wgpu",
 ]

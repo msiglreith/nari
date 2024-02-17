@@ -1,11 +1,11 @@
 mod icon;
 
-use crate::icon::Icon;
 use nari_platform::{
     ControlFlow, Event, EventLoop, Extent, Key, KeyCode, KeyState, Modifiers, MouseButtons,
     Platform, SurfaceArea,
 };
 use nari_vello::{
+    icon::Icon,
     kurbo::{Affine, Point, Rect, RoundedRect, Stroke},
     peniko::{Brush, Color, Fill},
     typo::{Caret, FontScaled},
@@ -250,32 +250,20 @@ impl Caption {
         let extent = app.event_loop.surface.extent();
         let canvas = &app.canvas;
 
-        sb.fill(
-            Fill::NonZero,
-            Affine::IDENTITY,
-            &Brush::Solid(app.style.color_caption),
-            None,
-            &Rect {
-                x0: 0.0,
-                x1: extent.width,
-                y0: 0.0,
-                y1: canvas.scale(Self::CAPTION_HEIGHT),
-            },
-        );
+        let affine_dpi = Affine::scale(canvas.scale(1.0));
 
         let chrome_minimize = Self::button_minimize(canvas, extent);
         let chrome_maximize = Self::button_maximize(canvas, extent);
         let chrome_close = Self::button_close(canvas, extent);
 
         // hover background
-        if let Some((x, y)) = app.event_loop.mouse_position {
-            let p = Point::new(x as f64, y as f64);
-
+        let mouse_pos = app.event_loop.mouse_position.map(|(x, y)| Point::new(x as f64, y as f64));
+        if let Some(p) = mouse_pos {
             if chrome_minimize.contains(p) {
                 sb.fill(
                     Fill::NonZero,
                     Affine::IDENTITY,
-                    &Brush::Solid(Color::rgb(0.27, 0.3, 0.34)),
+                    &Brush::Solid(Color::rgb(0.85, 0.85, 0.85)),
                     None,
                     &chrome_minimize,
                 );
@@ -283,7 +271,7 @@ impl Caption {
                 sb.fill(
                     Fill::NonZero,
                     Affine::IDENTITY,
-                    &Brush::Solid(Color::rgb(0.27, 0.3, 0.34)),
+                    &Brush::Solid(Color::rgb(0.85, 0.85, 0.85)),
                     None,
                     &chrome_maximize,
                 );
@@ -291,15 +279,14 @@ impl Caption {
                 sb.fill(
                     Fill::NonZero,
                     Affine::IDENTITY,
-                    &Brush::Solid(Color::rgb(0.9, 0.07, 0.14)),
+                    &Brush::Solid(Color::rgb(0.80, 0.20, 0.15)),
                     None,
                     &chrome_close,
                 );
             }
         }
 
-        // show symbols
-        let affine_dpi = Affine::scale(canvas.scale(1.0));
+
 
         let affine_minimize = Affine::translate(
             (chrome_minimize.center() - canvas.scale_pt(app.style.icon_chrome_minimize.bbox.center())).floor(),
@@ -323,19 +310,30 @@ impl Caption {
             &Brush::Solid(app.style.color_text),
         );
 
+        let close_color = if let Some(p) = mouse_pos {
+            if chrome_close.contains(p) {
+                Color::rgb(1.0, 1.0, 1.0)
+            } else {
+                app.style.color_text
+            }
+        } else {
+            app.style.color_text
+        };
         let affine_close = Affine::translate(
             (chrome_close.center() - canvas.scale_pt(app.style.icon_chrome_close.bbox.center())).floor(),
         );
         app.style.icon_chrome_close.paint(
             &mut sb,
             affine_close * affine_dpi,
-            &Brush::Solid(app.style.color_text),
+            &Brush::Solid(close_color),
         );
     }
 }
 
 struct Style {
     font_regular: FontScaled,
+
+    logo: Icon,
 
     icon_chrome_minimize: Icon,
     icon_chrome_maximize: Icon,
@@ -365,6 +363,8 @@ async fn run() -> anyhow::Result<()> {
     let icon_chrome_maximize = Icon::build(&std::fs::read("assets/codicon/chrome-maximize.svg")?)?;
     let icon_chrome_restore = Icon::build(&std::fs::read("assets/codicon/chrome-restore.svg")?)?;
 
+    let logo = Icon::build(&std::fs::read("assets/logo.svg")?)?;
+
     let font_body = canvas.create_font(std::fs::read("assets/Inter/Inter-Regular.ttf")?);
     let font_body_regular = canvas.create_font_scaled(font_body, canvas.scale(16.0).round() as u32);
 
@@ -392,16 +392,18 @@ async fn run() -> anyhow::Result<()> {
         style: Style {
             font_regular: font_body_regular,
 
+            logo,
+
             icon_chrome_close,
             icon_chrome_minimize,
             icon_chrome_maximize,
             icon_chrome_restore,
 
-            color_background: Color::rgb(0.12, 0.14, 0.17),
-            color_caption: Color::rgb(0.14, 0.16, 0.20),
-            color_text: Color::rgb(1.0, 1.0, 1.0),
-            color_text_select: Color::rgb(0.22, 0.25, 0.27),
-            color_cursor: Color::rgb(0.95, 1.0, 1.0),
+            color_background: Color::rgb(1.0, 1.0, 1.0),
+            color_caption: Color::rgb(0.97, 0.97, 1.0),
+            color_text: Color::rgb(0.0, 0.0, 0.0),
+            color_text_select: Color::rgb(0.97, 0.97, 1.0),
+            color_cursor: Color::rgb(0.0, 0.0, 0.0),
         },
     };
 

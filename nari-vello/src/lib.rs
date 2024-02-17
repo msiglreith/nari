@@ -1,9 +1,9 @@
 mod engine;
 mod fxp;
 
+pub mod icon;
 pub mod typo;
 pub use vello::*;
-use wgpu::Texture;
 
 use self::{
     engine::Engine,

@@ -7,7 +7,7 @@ members = [
     "nari-vello",
     "nari-path",
     "nari-gpu",
-    "nari-ochre",
+    "nari-ochre", "nari-decor-basic",
 ]
 
 [workspace.dependencies]
@@ -16,6 +16,7 @@ nari-platform = { path = "nari-platform" }
 nari-vello = { path = "nari-vello" }
 nari-ochre = { path = "nari-ochre" }
 nari-gpu = { path = "nari-gpu" }
+nari-decor-basic = { path = "nari-decor-basic" }
 
 superluminal-perf = "0.2"
 vello = { git = "https://github.com/msiglreith/vello.git", branch = "nari_v2" }

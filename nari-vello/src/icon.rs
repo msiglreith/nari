@@ -1,4 +1,4 @@
-use nari_vello::{
+use crate::{
     kurbo::{Affine, BezPath, Rect, Shape, Stroke},
     peniko::{Brush, Fill},
     SceneBuilder,
