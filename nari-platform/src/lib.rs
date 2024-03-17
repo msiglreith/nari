@@ -1,7 +1,9 @@
+use core::num::NonZeroIsize;
 use raw_window_handle::{
-    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle, Win32WindowHandle,
-    WindowsDisplayHandle,
+    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
+    RawWindowHandle, Win32WindowHandle, WindowHandle, WindowsDisplayHandle,
 };
+
 use std::{
     cell::{Cell, RefCell},
     ffi::OsStr,
@@ -23,12 +25,15 @@ use windows_sys::Win32::{
     System::SystemServices::{IMAGE_DOS_HEADER, MK_LBUTTON, MK_RBUTTON},
     UI::{
         Controls::{HOVER_DEFAULT, MARGINS, WM_MOUSELEAVE},
+        HiDpi::{
+            GetDpiForWindow, SetProcessDpiAwarenessContext,
+            DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+        },
         Input::KeyboardAndMouse::{
             GetKeyState, MapVirtualKeyW, ReleaseCapture, SetCapture, TrackMouseEvent,
             MAPVK_VK_TO_CHAR, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, VK_CONTROL, VK_DOWN,
             VK_LEFT, VK_MENU, VK_RIGHT, VK_SHIFT, VK_UP,
         },
-        HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext, GetDpiForWindow},
         WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
             GetWindowLongPtrW, GetWindowPlacement, LoadCursorW, PostMessageW, RegisterClassExW,
@@ -102,7 +107,7 @@ unsafe extern "system" fn window_proc(
                     let margins = MARGINS {
                         cxLeftWidth: 1,
                         cxRightWidth: 1,
-                        cyTopHeight: 1,
+                        cyTopHeight: 0,
                         cyBottomHeight: 1,
                     };
                     DwmExtendFrameIntoClientArea(window, &margins);
@@ -301,7 +306,7 @@ unsafe extern "system" fn window_proc(
             }
             surface.redraw();
 
-            0
+            DefWindowProcW(window, msg, wparam, lparam)
         }
 
         WM_MOUSELEAVE | WM_NCMOUSELEAVE => {
@@ -577,9 +582,7 @@ impl Surface {
     }
 
     pub fn dpi(&self) -> f64 {
-        unsafe {
-            GetDpiForWindow(self.hwnd) as f64 / 96.0
-        }
+        unsafe { GetDpiForWindow(self.hwnd) as f64 / 96.0 }
     }
 
     pub fn redraw(&self) {
@@ -605,7 +608,9 @@ impl Platform {
             u16_surrogate: Cell::new(None),
         });
 
-        unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2); }
+        unsafe {
+            SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        }
 
         unsafe {
             let hinstance = get_instance_handle();
@@ -705,18 +710,18 @@ impl Platform {
     }
 }
 
-unsafe impl HasRawDisplayHandle for Surface {
-    fn raw_display_handle(&self) -> RawDisplayHandle {
-        RawDisplayHandle::Windows(WindowsDisplayHandle::empty())
+impl HasDisplayHandle for Surface {
+    fn display_handle(&self) -> Result<DisplayHandle, HandleError> {
+        Ok(unsafe {
+            DisplayHandle::borrow_raw(RawDisplayHandle::Windows(WindowsDisplayHandle::new()))
+        })
     }
 }
 
-unsafe impl HasRawWindowHandle for Surface {
-    fn raw_window_handle(&self) -> RawWindowHandle {
-        let mut handle = Win32WindowHandle::empty();
-        handle.hwnd = self.hwnd as _;
-        handle.hinstance = get_instance_handle() as _;
-
-        RawWindowHandle::Win32(handle)
+impl HasWindowHandle for Surface {
+    fn window_handle(&self) -> Result<WindowHandle, HandleError> {
+        let mut handle = Win32WindowHandle::new(NonZeroIsize::new(self.hwnd as _).unwrap());
+        handle.hinstance = NonZeroIsize::new(get_instance_handle() as _);
+        Ok(unsafe { WindowHandle::borrow_raw(RawWindowHandle::Win32(handle)) })
     }
 }

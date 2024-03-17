@@ -1,5 +1,8 @@
-use nari_platform::{Extent, EventLoop, SurfaceArea};
-use nari_vello::{icon::Icon, peniko::Color, Canvas, SceneBuilder, peniko::Brush, kurbo::Affine, kurbo::Rect, kurbo::Point, peniko::Fill};
+use nari_platform::{EventLoop, Extent, SurfaceArea};
+use nari_vello::{
+    icon::Icon, kurbo::Affine, kurbo::Point, kurbo::Rect, peniko::Brush, peniko::Color,
+    peniko::Fill, Canvas, Scene,
+};
 
 pub struct Theme {
     icon_chrome_close: Icon,
@@ -15,9 +18,12 @@ impl Theme {
 
     pub fn new() -> anyhow::Result<Self> {
         let icon_chrome_close = Icon::build(&std::fs::read("assets/codicon/chrome-close.svg")?)?;
-        let icon_chrome_minimize = Icon::build(&std::fs::read("assets/codicon/chrome-minimize.svg")?)?;
-        let icon_chrome_maximize = Icon::build(&std::fs::read("assets/codicon/chrome-maximize.svg")?)?;
-        let icon_chrome_restore = Icon::build(&std::fs::read("assets/codicon/chrome-restore.svg")?)?;
+        let icon_chrome_minimize =
+            Icon::build(&std::fs::read("assets/codicon/chrome-minimize.svg")?)?;
+        let icon_chrome_maximize =
+            Icon::build(&std::fs::read("assets/codicon/chrome-maximize.svg")?)?;
+        let icon_chrome_restore =
+            Icon::build(&std::fs::read("assets/codicon/chrome-restore.svg")?)?;
 
         Ok(Self {
             icon_chrome_close,
@@ -105,7 +111,7 @@ impl Theme {
         None
     }
 
-    pub fn paint(&self, event_loop: &EventLoop, canvas: &mut Canvas, mut sb: &mut SceneBuilder) {
+    pub fn paint(&self, event_loop: &EventLoop, canvas: &mut Canvas, mut sb: &mut Scene) {
         let extent = event_loop.surface.extent();
         let dpi = event_loop.surface.dpi();
         let affine_dpi = Affine::scale(dpi);
@@ -115,7 +121,9 @@ impl Theme {
         let chrome_close = Self::button_close(extent, dpi);
 
         // hover background
-        let mouse_pos = event_loop.mouse_position.map(|(x, y)| Point::new(x as f64, y as f64));
+        let mouse_pos = event_loop
+            .mouse_position
+            .map(|(x, y)| Point::new(x as f64, y as f64));
         if let Some(p) = mouse_pos {
             if chrome_minimize.contains(p) {
                 sb.fill(
@@ -147,7 +155,8 @@ impl Theme {
         let color_text = Color::rgb(0.0, 0.0, 0.0);
 
         let affine_minimize = Affine::translate(
-            (chrome_minimize.center() - canvas.scale_pt(self.icon_chrome_minimize.bbox.center())).floor(),
+            (chrome_minimize.center() - canvas.scale_pt(self.icon_chrome_minimize.bbox.center()))
+                .floor(),
         );
         self.icon_chrome_minimize.paint(
             &mut sb,
@@ -160,8 +169,9 @@ impl Theme {
         } else {
             &self.icon_chrome_maximize
         };
-        let affine_maximize =
-            Affine::translate((chrome_maximize.center() - canvas.scale_pt(icon_maximize.bbox.center())).floor());
+        let affine_maximize = Affine::translate(
+            (chrome_maximize.center() - canvas.scale_pt(icon_maximize.bbox.center())).floor(),
+        );
         icon_maximize.paint(
             &mut sb,
             affine_maximize * affine_dpi,

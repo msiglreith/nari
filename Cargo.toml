@@ -19,9 +19,9 @@ nari-gpu = { path = "nari-gpu" }
 nari-decor-basic = { path = "nari-decor-basic" }
 
 superluminal-perf = "0.2"
-vello = { git = "https://github.com/msiglreith/vello.git", branch = "nari_v2" }
+vello = { path = "../vello" } # { git = "https://github.com/msiglreith/vello.git", branch = "nari_v2" }
 swash = { git = "https://github.com/msiglreith/swash.git", branch = "nari" }
-raw-window-handle = "0.5"
+raw-window-handle = "0.6"
 anyhow = "1"
 
 [profile.dev.package."*"]

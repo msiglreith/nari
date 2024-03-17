@@ -5,9 +5,7 @@ use ash::{
     vk::Handle,
 };
 use gpu_allocator::vulkan::{Allocation, Allocator, AllocatorCreateDesc};
-use std::{
-    collections::{hash_map::Entry, HashMap},
-};
+use std::collections::{hash_map::Entry, HashMap};
 use std::{
     ffi::CString,
     path::{Path, PathBuf},

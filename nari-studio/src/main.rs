@@ -1,5 +1,3 @@
-mod icon;
-
 use nari_platform::{
     ControlFlow, Event, EventLoop, Extent, Key, KeyCode, KeyState, Modifiers, MouseButtons,
     Platform, SurfaceArea,
@@ -9,7 +7,7 @@ use nari_vello::{
     kurbo::{Affine, Point, Rect, RoundedRect, Stroke},
     peniko::{Brush, Color, Fill},
     typo::{Caret, FontScaled},
-    Align, Canvas, Scene, SceneBuilder,
+    Align, Canvas, Scene,
 };
 use unicode_segmentation::GraphemeCursor;
 
@@ -101,7 +99,7 @@ impl TextCursor {
         }
     }
 
-    fn paint(&self, app: &mut App, mut sb: &mut SceneBuilder) {
+    fn paint(&self, app: &mut App, mut sb: &mut Scene) {
         let pen = Affine::translate(self.pen.to_vec2());
 
         let text_run = app
@@ -246,7 +244,7 @@ impl Caption {
         None
     }
 
-    fn paint(app: &mut App, mut sb: &mut SceneBuilder) {
+    fn paint(app: &mut App, mut sb: &mut Scene) {
         let extent = app.event_loop.surface.extent();
         let canvas = &app.canvas;
 
@@ -257,7 +255,10 @@ impl Caption {
         let chrome_close = Self::button_close(canvas, extent);
 
         // hover background
-        let mouse_pos = app.event_loop.mouse_position.map(|(x, y)| Point::new(x as f64, y as f64));
+        let mouse_pos = app
+            .event_loop
+            .mouse_position
+            .map(|(x, y)| Point::new(x as f64, y as f64));
         if let Some(p) = mouse_pos {
             if chrome_minimize.contains(p) {
                 sb.fill(
@@ -286,10 +287,10 @@ impl Caption {
             }
         }
 
-
-
         let affine_minimize = Affine::translate(
-            (chrome_minimize.center() - canvas.scale_pt(app.style.icon_chrome_minimize.bbox.center())).floor(),
+            (chrome_minimize.center()
+                - canvas.scale_pt(app.style.icon_chrome_minimize.bbox.center()))
+            .floor(),
         );
         app.style.icon_chrome_minimize.paint(
             &mut sb,
@@ -302,8 +303,9 @@ impl Caption {
         } else {
             &app.style.icon_chrome_maximize
         };
-        let affine_maximize =
-            Affine::translate((chrome_maximize.center() - canvas.scale_pt(icon_maximize.bbox.center())).floor());
+        let affine_maximize = Affine::translate(
+            (chrome_maximize.center() - canvas.scale_pt(icon_maximize.bbox.center())).floor(),
+        );
         icon_maximize.paint(
             &mut sb,
             affine_maximize * affine_dpi,
@@ -320,7 +322,8 @@ impl Caption {
             app.style.color_text
         };
         let affine_close = Affine::translate(
-            (chrome_close.center() - canvas.scale_pt(app.style.icon_chrome_close.bbox.center())).floor(),
+            (chrome_close.center() - canvas.scale_pt(app.style.icon_chrome_close.bbox.center()))
+                .floor(),
         );
         app.style.icon_chrome_close.paint(
             &mut sb,
@@ -429,7 +432,8 @@ async fn run() -> anyhow::Result<()> {
             }
 
             Event::Paint => {
-                let mut sb = SceneBuilder::for_scene(&mut scene);
+                let mut sb = &mut scene;
+                sb.reset();
 
                 Caption::paint(&mut app, &mut sb);
 
@@ -441,7 +445,9 @@ async fn run() -> anyhow::Result<()> {
                 let text_run = app
                     .canvas
                     .build_text_run(app.style.font_regular, "New Task");
-                let bounds = text_run.bounds().inflate(app.canvas.scale(10.0), app.canvas.scale(5.0));
+                let bounds = text_run
+                    .bounds()
+                    .inflate(app.canvas.scale(10.0), app.canvas.scale(5.0));
                 let bounds_round = RoundedRect::from_rect(bounds, app.canvas.scale(6.0));
 
                 sb.fill(

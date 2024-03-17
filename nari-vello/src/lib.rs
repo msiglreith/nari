@@ -25,7 +25,7 @@ pub struct Canvas {
     _instance: wgpu::Instance,
     device: wgpu::Device,
     queue: wgpu::Queue,
-    swapchain: wgpu::Surface,
+    swapchain: wgpu::Surface<'static>,
     swapchain_config: wgpu::SurfaceConfiguration,
     engine: Pin<Box<Engine>>,
     renderer: vello::Renderer,
@@ -43,16 +43,16 @@ impl Canvas {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    features: features
+                    required_features: features
                         & (wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::CLEAR_TEXTURE),
-                    limits,
+                    required_limits: limits,
                 },
                 None,
             )
             .await
             .unwrap();
 
-        let swapchain = unsafe { instance.create_surface(&surface).unwrap() };
+        let swapchain = instance.create_surface(surface).unwrap();
         let size = surface.extent();
         let swapchain_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -62,6 +62,7 @@ impl Canvas {
             present_mode: wgpu::PresentMode::AutoNoVsync,
             alpha_mode: wgpu::CompositeAlphaMode::Opaque,
             view_formats: vec![],
+            desired_maximum_frame_latency: 3,
         };
         swapchain.configure(&device, &swapchain_config);
 
@@ -71,6 +72,7 @@ impl Canvas {
                 surface_format: Some(wgpu::TextureFormat::Bgra8UnormSrgb),
                 use_cpu: false,
                 antialiasing_support: vello::AaSupport::area_only(),
+                num_init_threads: None,
             },
         )
         .unwrap();
@@ -145,7 +147,7 @@ impl Canvas {
 
     pub fn text_run(
         &self,
-        sb: &mut SceneBuilder,
+        sb: &mut Scene,
         text_run: &TextRun,
         affine: Affine,
         align_x: Align,
@@ -182,7 +184,7 @@ impl Canvas {
 
     pub fn glyph<C: Into<char>>(
         &mut self,
-        sb: &mut SceneBuilder,
+        sb: &mut Scene,
         font: typo::FontScaled,
         c: C,
         affine: Affine,

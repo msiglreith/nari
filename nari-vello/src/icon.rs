@@ -1,7 +1,7 @@
 use crate::{
     kurbo::{Affine, BezPath, Rect, Shape, Stroke},
     peniko::{Brush, Fill},
-    SceneBuilder,
+    Scene,
 };
 use usvg::TreeParsing;
 
@@ -71,7 +71,7 @@ impl Icon {
         Ok(icon)
     }
 
-    pub fn paint(&self, sb: &mut SceneBuilder, affine: Affine, brush: &Brush) {
+    pub fn paint(&self, sb: &mut Scene, affine: Affine, brush: &Brush) {
         for path in &self.paths {
             let transform = affine * path.transform;
 
