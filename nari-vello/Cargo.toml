@@ -21,3 +21,4 @@ anyhow.workspace = true
 [dev-dependencies]
 pollster = "0.2"
 superluminal-perf.workspace = true
+nari-decor-basic.workspace = true
