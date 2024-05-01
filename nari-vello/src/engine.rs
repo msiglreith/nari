@@ -5,61 +5,22 @@ use crate::{
         TextRunGlyph, TextRunGraphemeCluster,
     },
 };
-use libc::{self, c_long, c_void, size_t};
-use nari_freetype as ft_sys;
+use skrifa::prelude::*;
 use skrifa::MetadataProvider;
-use std::{pin::Pin, ptr};
 use swash::{shape::ShapeContext, CacheKey, FontRef};
 use vello::kurbo::{BezPath, Rect};
 
-extern "C" fn alloc_library(_memory: ft_sys::FT_Memory, size: c_long) -> *mut c_void {
-    unsafe { libc::malloc(size as size_t) }
-}
-
-extern "C" fn free_library(_memory: ft_sys::FT_Memory, block: *mut c_void) {
-    unsafe { libc::free(block) }
-}
-
-extern "C" fn realloc_library(
-    _memory: ft_sys::FT_Memory,
-    _cur_size: c_long,
-    new_size: c_long,
-    block: *mut c_void,
-) -> *mut c_void {
-    unsafe { libc::realloc(block, new_size as size_t) }
-}
-
 pub struct Engine {
-    library: ft_sys::FT_Library,
-    memory: ft_sys::FT_MemoryRec,
     shaper: ShapeContext,
     fonts: Vec<FontData>,
 }
 
 impl Engine {
-    pub fn new() -> Pin<Box<Self>> {
+    pub fn new() -> Self {
         let lib = Self {
-            library: ptr::null_mut(),
-            memory: ft_sys::FT_MemoryRec {
-                user: ptr::null_mut() as *mut c_void,
-                alloc: alloc_library,
-                free: free_library,
-                realloc: realloc_library,
-            },
             shaper: ShapeContext::new(),
             fonts: Vec::default(),
         };
-
-        let mut lib = Box::pin(lib);
-        unsafe {
-            let mut_ref: Pin<&mut Self> = Pin::as_mut(&mut lib);
-            let mut_ref = Pin::get_unchecked_mut(mut_ref);
-            assert_eq!(
-                ft_sys::FT_New_Library(&mut mut_ref.memory, &mut mut_ref.library),
-                ft_sys::FT_Err_Ok
-            );
-            ft_sys::FT_Add_Default_Modules(lib.library);
-        }
 
         lib
     }
@@ -67,43 +28,28 @@ impl Engine {
     pub fn create_font(&mut self, data: Vec<u8>) -> Font {
         let font_id = self.fonts.len();
 
-        // freetype
-        let mut face = ptr::null_mut();
-        unsafe {
-            assert_eq!(
-                ft_sys::FT_New_Memory_Face(
-                    self.library,
-                    data.as_ptr(),
-                    data.len() as _,
-                    0,
-                    &mut face
-                ),
-                ft_sys::FT_Err_Ok
-            );
-        }
-
         // swash
         let font_ref = FontRef::from_index(&data, 0).unwrap();
 
         self.fonts.push(FontData {
             key: font_ref.key,
             offset: font_ref.offset,
-            size: 0,
-            face,
             data,
         });
         font_id
     }
 
     pub fn create_font_scaled(&mut self, font: Font, size: FontSize) -> FontScaled {
-        let font_ref: &mut FontData = self.font(font);
-        font_ref.scale(size);
-        let metrics = font_ref.properties();
+        let font_data: &mut FontData = self.font(font);
+
+        let metrics = font_data
+            .to_skrifa()
+            .metrics(Size::new(size as _), LocationRef::default());
 
         let properties = FontProperties {
-            ascent: metrics.ascent.f64(),
-            descent: metrics.descent.f64(),
-            height: metrics.height.f64(),
+            ascent: fxp6::from_f32(metrics.ascent).f64(),
+            descent: fxp6::from_f32(metrics.descent).f64(),
+            height: fxp6::from_f32(metrics.ascent - metrics.descent + metrics.leading).f64(),
         };
 
         FontScaled {
@@ -118,30 +64,22 @@ impl Engine {
     }
 
     pub fn glyph_extent(&mut self, font: FontScaled, c: char) -> Rect {
-        let font_ref = self.font(font.font);
-        font_ref.scale(font.size);
+        let font_data = self.font(font.font);
+        let glyph_id = font_data.glyph_index(c);
 
-        unsafe {
-            assert_eq!(
-                ft_sys::FT_Load_Char(
-                    font_ref.face,
-                    c as _,
-                    ft_sys::FT_LOAD_NO_BITMAP | ft_sys::FT_LOAD_TARGET_NORMAL
-                ),
-                ft_sys::FT_Err_Ok
-            );
-        }
+        let font_ref = font_data.to_skrifa();
 
-        let x = unsafe { (*(*font_ref.face).glyph).metrics.horiBearingX };
-        let y = unsafe { (*(*font_ref.face).glyph).metrics.horiBearingY };
-        let width = unsafe { (*(*font_ref.face).glyph).metrics.width };
-        let height = unsafe { (*(*font_ref.face).glyph).metrics.height };
+        let glyph_metrics =
+            font_ref.glyph_metrics(Size::new(font.size as _), LocationRef::default());
+        let bounds = glyph_metrics
+            .bounds(skrifa::GlyphId::new(glyph_id as _))
+            .unwrap();
 
         Rect {
-            x0: fxp6::new(x).f64(),
-            y0: fxp6::new(-y + height).f64(),
-            x1: fxp6::new(x + width).f64(),
-            y1: fxp6::new(-y).f64(),
+            x0: fxp6::from_f32(bounds.x_min).f64(),
+            y0: fxp6::from_f32(bounds.y_min).f64(),
+            x1: fxp6::from_f32(bounds.x_max).f64(),
+            y1: fxp6::from_f32(bounds.y_max).f64(),
         }
     }
 
@@ -191,7 +129,6 @@ impl Engine {
         let text_run = self.layout_text(font, text);
 
         let font_ref = self.font(font.font);
-        font_ref.scale(font.size);
 
         for cluster in &text_run.clusters {
             for glyph in &cluster.glyphs {
@@ -203,7 +140,7 @@ impl Engine {
 
                 glyph_cache
                     .entry((font.size, glyph_key))
-                    .or_insert_with(|| font_ref.outline(glyph.id, subpixel_offset.0));
+                    .or_insert_with(|| font_ref.outline(font.size, glyph.id, subpixel_offset.0));
             }
         }
 
@@ -217,7 +154,6 @@ impl Engine {
         glyph_cache: &mut GlyphCache,
     ) -> TextRunGlyph {
         let font_ref = self.font(font.font);
-        font_ref.scale(font.size);
 
         let glyph_key = GlyphKey {
             id: font_ref.glyph_index(c),
@@ -226,7 +162,7 @@ impl Engine {
 
         glyph_cache
             .entry((font.size, glyph_key))
-            .or_insert_with(|| font_ref.outline(glyph_key.id, glyph_key.offset.0));
+            .or_insert_with(|| font_ref.outline(font.size, glyph_key.id, glyph_key.offset.0));
 
         TextRunGlyph {
             id: glyph_key.id,
@@ -244,10 +180,6 @@ pub struct FtFontProperties {
 
 struct FontData {
     data: Vec<u8>,
-
-    // freetype
-    face: ft_sys::FT_Face,
-    size: u32,
 
     // swash
     offset: u32,
@@ -290,45 +222,22 @@ impl FontData {
         }
     }
 
-    // freetype
-    fn scale(&mut self, size_px: u32) {
-        // performance optimization
-        if self.size == size_px {
-            return;
-        }
-
-        unsafe {
-            assert_eq!(
-                ft_sys::FT_Set_Pixel_Sizes(self.face, 0, size_px),
-                ft_sys::FT_Err_Ok
-            );
-        }
-        self.size = size_px;
-    }
-
-    fn properties(&self) -> FtFontProperties {
-        let face = unsafe { &*self.face };
-        let size = unsafe { &*face.size }; // todo: requires earlier call of `scale`
-
-        FtFontProperties {
-            ascent: fxp6::new(size.metrics.ascender),
-            descent: fxp6::new(size.metrics.descender),
-            height: fxp6::new(size.metrics.height),
-        }
+    fn to_skrifa(&self) -> skrifa::FontRef {
+        skrifa::FontRef::new(&self.data).unwrap()
     }
 
     fn glyph_index(&self, c: char) -> GlyphId {
-        unsafe { ft_sys::FT_Get_Char_Index(self.face, c as _) }
+        self.to_skrifa().charmap().map(c).unwrap().to_u32()
     }
 
-    fn outline(&mut self, glyph: GlyphId, _subpixel_offset: i32) -> BezPath {
+    fn outline(&mut self, size: FontSize, glyph: GlyphId, _subpixel_offset: i32) -> BezPath {
         let font_ref = skrifa::FontRef::from_index(&self.data, 0).unwrap();
         let outlines = font_ref.outline_glyphs();
         let sk_glyph = outlines.get(skrifa::GlyphId::new(glyph as _)).unwrap();
         let hinting = skrifa::outline::HintingInstance::new(
             &outlines,
-            skrifa::prelude::Size::new(self.size as _),
-            skrifa::prelude::LocationRef::default(),
+            Size::new(size as _),
+            LocationRef::default(),
             skrifa::outline::HintingMode::Smooth {
                 lcd_subpixel: None,
                 preserve_linear_metrics: true,

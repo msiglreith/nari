@@ -1092,13 +1092,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nari-freetype"
-version = "0.1.0"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "nari-gpu"
 version = "0.1.0"
 dependencies = [
@@ -1168,7 +1161,6 @@ dependencies = [
  "bytemuck",
  "libc",
  "nari-decor-basic",
- "nari-freetype",
  "nari-platform",
  "pollster",
  "raw-window-handle 0.6.0",

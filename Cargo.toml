@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "nari-freetype",
     "nari-platform",
     "nari-studio",
     "nari-vello",
@@ -11,7 +10,6 @@ members = [
 ]
 
 [workspace.dependencies]
-nari-freetype = { path = "nari-freetype" }
 nari-platform = { path = "nari-platform" }
 nari-vello = { path = "nari-vello" }
 nari-ochre = { path = "nari-ochre" }

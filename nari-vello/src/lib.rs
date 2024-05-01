@@ -12,7 +12,6 @@ use self::{
     typo::{Font, FontScaled, FontSize, GlyphCache, GlyphKey, TextRun},
 };
 use nari_platform::{Extent, Surface};
-use std::pin::Pin;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Align {
@@ -27,7 +26,7 @@ pub struct Canvas {
     queue: wgpu::Queue,
     swapchain: wgpu::Surface<'static>,
     swapchain_config: wgpu::SurfaceConfiguration,
-    engine: Pin<Box<Engine>>,
+    engine: Engine,
     renderer: vello::Renderer,
     glyph_cache: typo::GlyphCache,
     scale: f64,

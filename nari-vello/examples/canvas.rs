@@ -41,7 +41,7 @@ async fn run() -> anyhow::Result<()> {
                 nari_vello::Align::Positive,
                 vello::peniko::Brush::Solid(foreground),
             );
-            py += font.properties.height;
+            py += font.properties.height.round();
         }
     }
 
