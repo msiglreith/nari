@@ -17,6 +17,7 @@ wgpu = "0.19"
 raw-window-handle.workspace = true
 usvg = "0.30"
 anyhow.workspace = true
+skrifa = "0.19"
 
 [dev-dependencies]
 pollster = "0.2"

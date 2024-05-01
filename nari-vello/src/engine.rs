@@ -7,9 +7,10 @@ use crate::{
 };
 use libc::{self, c_long, c_void, size_t};
 use nari_freetype as ft_sys;
+use skrifa::MetadataProvider;
 use std::{pin::Pin, ptr};
 use swash::{shape::ShapeContext, CacheKey, FontRef};
-use vello::kurbo::{BezPath, Point, Rect};
+use vello::kurbo::{BezPath, Rect};
 
 extern "C" fn alloc_library(_memory: ft_sys::FT_Memory, size: c_long) -> *mut c_void {
     unsafe { libc::malloc(size as size_t) }
@@ -95,7 +96,7 @@ impl Engine {
     }
 
     pub fn create_font_scaled(&mut self, font: Font, size: FontSize) -> FontScaled {
-        let font_ref = self.font(font);
+        let font_ref: &mut FontData = self.font(font);
         font_ref.scale(size);
         let metrics = font_ref.properties();
 
@@ -253,6 +254,32 @@ struct FontData {
     key: CacheKey,
 }
 
+struct BezPen(BezPath);
+
+impl skrifa::outline::OutlinePen for BezPen {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.0.move_to((x as f64, y as f64));
+    }
+
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.0.line_to((x as f64, y as f64));
+    }
+    fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
+        self.0
+            .quad_to((cx0 as f64, cy0 as f64), (x as f64, y as f64));
+    }
+    fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
+        self.0.curve_to(
+            (cx0 as f64, cy0 as f64),
+            (cx1 as f64, cy1 as f64),
+            (x as f64, y as f64),
+        );
+    }
+    fn close(&mut self) {
+        self.0.close_path();
+    }
+}
+
 impl FontData {
     // swash
     fn to_ref(&self) -> FontRef {
@@ -294,90 +321,24 @@ impl FontData {
         unsafe { ft_sys::FT_Get_Char_Index(self.face, c as _) }
     }
 
-    fn outline(&mut self, glyph: GlyphId, subpixel_offset: i32) -> BezPath {
-        let glyph = self.load_glyph(glyph);
+    fn outline(&mut self, glyph: GlyphId, _subpixel_offset: i32) -> BezPath {
+        let font_ref = skrifa::FontRef::from_index(&self.data, 0).unwrap();
+        let outlines = font_ref.outline_glyphs();
+        let sk_glyph = outlines.get(skrifa::GlyphId::new(glyph as _)).unwrap();
+        let hinting = skrifa::outline::HintingInstance::new(
+            &outlines,
+            skrifa::prelude::Size::new(self.size as _),
+            skrifa::prelude::LocationRef::default(),
+            skrifa::outline::HintingMode::Smooth {
+                lcd_subpixel: None,
+                preserve_linear_metrics: true,
+            },
+        )
+        .unwrap();
+        let settings = skrifa::outline::DrawSettings::hinted(&hinting, false);
 
-        let outline_fn = ft_sys::FT_Outline_Funcs {
-            move_to: path_move_to,
-            conic_to: path_conic_to,
-            cubic_to: path_cubic_to,
-            line_to: path_line_to,
-            shift: 0,
-            delta: 0,
-        };
-
-        let mut result = BezPath::default();
-        unsafe {
-            ft_sys::FT_Outline_Translate(&mut glyph.outline as *mut _, subpixel_offset, 0);
-            assert_eq!(
-                ft_sys::FT_Outline_Decompose(
-                    &mut glyph.outline as *mut _,
-                    &outline_fn,
-                    &mut result as *mut _ as *mut _
-                ),
-                ft_sys::FT_Err_Ok
-            );
-        }
-        result
+        let mut pen = BezPen(BezPath::default());
+        sk_glyph.draw(settings, &mut pen).unwrap();
+        return pen.0;
     }
-
-    fn load_glyph(&mut self, glyph: GlyphId) -> &mut ft_sys::FT_GlyphSlotRec {
-        unsafe {
-            assert_eq!(
-                ft_sys::FT_Load_Glyph(
-                    self.face,
-                    glyph,
-                    ft_sys::FT_LOAD_NO_BITMAP | ft_sys::FT_LOAD_TARGET_NORMAL
-                ),
-                ft_sys::FT_Err_Ok
-            );
-            &mut *(*self.face).glyph
-        }
-    }
-}
-
-fn ft_vector_as_point(v: *const ft_sys::FT_Vector) -> Point {
-    unsafe {
-        Point {
-            x: fxp6::new((*v).x).f64(),
-            y: fxp6::new((*v).y).f64(),
-        }
-    }
-}
-
-extern "C" fn path_line_to(to: *const ft_sys::FT_Vector, user: *mut c_void) -> i32 {
-    let path: &mut BezPath = unsafe { &mut *(user as *mut _) };
-    path.line_to(ft_vector_as_point(to));
-    0
-}
-
-extern "C" fn path_conic_to(
-    c: *const ft_sys::FT_Vector,
-    to: *const ft_sys::FT_Vector,
-    user: *mut c_void,
-) -> i32 {
-    let path: &mut BezPath = unsafe { &mut *(user as *mut _) };
-    path.quad_to(ft_vector_as_point(c), ft_vector_as_point(to));
-    0
-}
-
-extern "C" fn path_cubic_to(
-    c0: *const ft_sys::FT_Vector,
-    c1: *const ft_sys::FT_Vector,
-    to: *const ft_sys::FT_Vector,
-    user: *mut c_void,
-) -> i32 {
-    let path: &mut BezPath = unsafe { &mut *(user as *mut _) };
-    path.curve_to(
-        ft_vector_as_point(c0),
-        ft_vector_as_point(c1),
-        ft_vector_as_point(to),
-    );
-    0
-}
-
-extern "C" fn path_move_to(to: *const ft_sys::FT_Vector, user: *mut c_void) -> i32 {
-    let path: &mut BezPath = unsafe { &mut *(user as *mut _) };
-    path.move_to(ft_vector_as_point(to));
-    0
 }
