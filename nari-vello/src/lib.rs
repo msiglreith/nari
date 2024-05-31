@@ -124,7 +124,7 @@ impl Canvas {
     }
 
     pub fn scale(&self, x: f64) -> f64 {
-        x * self.scale
+        (x * self.scale).round()
     }
 
     pub fn scale_pt(&self, pt: Point) -> Point {

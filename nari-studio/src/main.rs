@@ -105,7 +105,7 @@ impl TextCursor {
         let text_run = app
             .canvas
             .build_text_run(app.style.font_regular, &self.text);
-        let bounds = text_run.bounds();
+        let bounds = text_run.bounds().expand();
 
         // selection background
         if self.focused {
@@ -504,6 +504,7 @@ async fn run() -> anyhow::Result<()> {
 
                 app.event_loop.surface.redraw();
             }
+
             _ => (),
         }
         ControlFlow::Continue

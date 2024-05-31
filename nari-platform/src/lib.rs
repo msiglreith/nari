@@ -13,40 +13,44 @@ use std::{
     ptr,
     rc::Rc,
 };
-use windows_sys::Win32::{
-    Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM},
-    Graphics::{
-        Dwm::{DwmExtendFrameIntoClientArea, DwmFlush},
-        Gdi::{
-            GetMonitorInfoW, MonitorFromRect, RedrawWindow, ScreenToClient, ValidateRect,
-            MONITORINFOEXW, MONITOR_DEFAULTTONULL, RDW_INVALIDATE,
+use windows_sys::{
+    core::PCWSTR,
+    Win32::{
+        Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM},
+        Graphics::{
+            Dwm::{DwmExtendFrameIntoClientArea, DwmFlush},
+            Gdi::{
+                GetMonitorInfoW, MonitorFromRect, RedrawWindow, ScreenToClient, ValidateRect,
+                MONITORINFOEXW, MONITOR_DEFAULTTONULL, RDW_INVALIDATE,
+            },
         },
-    },
-    System::SystemServices::{IMAGE_DOS_HEADER, MK_LBUTTON, MK_RBUTTON},
-    UI::{
-        Controls::{HOVER_DEFAULT, MARGINS, WM_MOUSELEAVE},
-        HiDpi::{
-            GetDpiForWindow, SetProcessDpiAwarenessContext,
-            DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
-        },
-        Input::KeyboardAndMouse::{
-            GetKeyState, MapVirtualKeyW, ReleaseCapture, SetCapture, TrackMouseEvent,
-            MAPVK_VK_TO_CHAR, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, VK_CONTROL, VK_DOWN,
-            VK_LEFT, VK_MENU, VK_RIGHT, VK_SHIFT, VK_UP,
-        },
-        WindowsAndMessaging::{
-            CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
-            GetWindowLongPtrW, GetWindowPlacement, LoadCursorW, PostMessageW, RegisterClassExW,
-            SetWindowLongPtrW, ShowWindow, TranslateMessage, CREATESTRUCTW, CS_HREDRAW, CS_VREDRAW,
-            CW_USEDEFAULT, GWL_USERDATA, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION,
-            HTCLIENT, HTCLOSE, HTLEFT, HTMAXBUTTON, HTMINBUTTON, HTRIGHT, HTTOP, HTTOPLEFT,
-            HTTOPRIGHT, IDC_ARROW, NCCALCSIZE_PARAMS, SC_CLOSE, SC_MAXIMIZE, SC_MINIMIZE,
-            SC_RESTORE, SW_MAXIMIZE, SW_SHOW, WINDOWPLACEMENT, WM_CHAR, WM_DESTROY, WM_KEYDOWN,
-            WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE,
-            WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE,
-            WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SIZE, WM_SYSCOMMAND, WNDCLASSEXW,
-            WS_CAPTION, WS_EX_ACCEPTFILES, WS_EX_APPWINDOW, WS_EX_WINDOWEDGE, WS_MAXIMIZEBOX,
-            WS_MINIMIZEBOX, WS_SIZEBOX, WS_SYSMENU,
+        System::SystemServices::{IMAGE_DOS_HEADER, MK_LBUTTON, MK_RBUTTON},
+        UI::{
+            Controls::{HOVER_DEFAULT, MARGINS, WM_MOUSELEAVE},
+            HiDpi::{
+                GetDpiForWindow, SetProcessDpiAwarenessContext,
+                DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+            },
+            Input::KeyboardAndMouse::{
+                GetKeyState, MapVirtualKeyW, ReleaseCapture, SetCapture, TrackMouseEvent,
+                MAPVK_VK_TO_CHAR, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, VK_CONTROL, VK_DOWN,
+                VK_LEFT, VK_MENU, VK_RIGHT, VK_SHIFT, VK_UP,
+            },
+            WindowsAndMessaging::{
+                CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetMessageW,
+                GetWindowLongPtrW, GetWindowPlacement, LoadCursorW, PostMessageW, RegisterClassExW,
+                SetCursor, SetWindowLongPtrW, ShowWindow, TranslateMessage, CREATESTRUCTW,
+                CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_USERDATA, HTBOTTOM, HTBOTTOMLEFT,
+                HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTCLOSE, HTLEFT, HTMAXBUTTON, HTMINBUTTON,
+                HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, IDC_ARROW, IDC_HAND, NCCALCSIZE_PARAMS,
+                SC_CLOSE, SC_MAXIMIZE, SC_MINIMIZE, SC_RESTORE, SW_MAXIMIZE, SW_SHOW,
+                WINDOWPLACEMENT, WM_CHAR, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN,
+                WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST,
+                WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_PAINT,
+                WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SIZE, WM_SYSCOMMAND, WNDCLASSEXW,
+                WS_CAPTION, WS_EX_ACCEPTFILES, WS_EX_APPWINDOW, WS_EX_WINDOWEDGE, WS_MAXIMIZEBOX,
+                WS_MINIMIZEBOX, WS_SIZEBOX, WS_SYSMENU,
+            },
         },
     },
 };
@@ -263,6 +267,13 @@ unsafe extern "system" fn window_proc(
             0
         }
 
+        WM_SETCURSOR => {
+            unsafe {
+                SetCursor(LoadCursorW(0, user_data.cursor.get().idc()));
+            }
+            1
+        }
+
         WM_MOUSEMOVE => {
             let x = loword(lparam as u32) as i16 as i32;
             let y = hiword(lparam as u32) as i16 as i32;
@@ -276,7 +287,12 @@ unsafe extern "system" fn window_proc(
             });
 
             user_data.mouse_position.set(Some((x, y)));
-            user_data.send(Event::MouseMove);
+
+            let mut cursor = user_data.cursor.get();
+            user_data.send(Event::MouseMove {
+                cursor: &mut cursor,
+            });
+            user_data.cursor.set(cursor);
 
             0
         }
@@ -304,6 +320,13 @@ unsafe extern "system" fn window_proc(
                     user_data.mouse_position.set(None);
                 }
             }
+
+            let mut cursor = user_data.cursor.get();
+            user_data.send(Event::MouseMove {
+                cursor: &mut cursor,
+            });
+            user_data.cursor.set(cursor);
+
             surface.redraw();
 
             DefWindowProcW(window, msg, wparam, lparam)
@@ -428,7 +451,9 @@ pub enum Event<'a> {
         state: KeyState,
         modifiers: Modifiers,
     },
-    MouseMove,
+    MouseMove {
+        cursor: &'a mut Cursor,
+    },
 
     /// Character input for text processing.
     Char(char),
@@ -443,6 +468,7 @@ pub enum Event<'a> {
 
 struct UserData {
     surface: Cell<Surface>,
+    cursor: Cell<Cursor>,
     control_flow: Cell<ControlFlow>,
     event_callback: RefCell<Box<dyn FnMut(EventLoop, Event) -> ControlFlow>>,
     mouse_position: Cell<Option<(i32, i32)>>,
@@ -532,8 +558,24 @@ impl UserData {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum Cursor {
+    Default,
+    Hand,
+}
+
+impl Cursor {
+    fn idc(self) -> PCWSTR {
+        match self {
+            Self::Default => IDC_ARROW,
+            Self::Hand => IDC_HAND,
+        }
+    }
+}
+
 pub struct EventLoop {
     pub surface: Surface,
+    // pub cursor: Option<Cursor>,
     pub mouse_position: Option<(i32, i32)>,
     pub mouse_buttons: MouseButtons,
 }
@@ -600,6 +642,7 @@ impl Platform {
     pub fn new() -> Self {
         let user_data = Rc::new(UserData {
             surface: Cell::new(Surface { hwnd: 0 }), // set during WM_NCCREATE
+            cursor: Cell::new(Cursor::Default),
             control_flow: Cell::new(ControlFlow::Continue),
             event_callback: RefCell::new(Box::new(|_, _| ControlFlow::Continue)),
             mouse_position: Cell::new(None),
