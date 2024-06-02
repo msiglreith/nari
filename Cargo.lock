@@ -1104,6 +1104,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nari-ir"
+version = "0.1.0"
+
+[[package]]
 name = "nari-ochre"
 version = "0.1.0"
 dependencies = [

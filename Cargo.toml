@@ -6,7 +6,9 @@ members = [
     "nari-vello",
     "nari-path",
     "nari-gpu",
-    "nari-ochre", "nari-decor-basic",
+    "nari-ochre",
+    "nari-decor-basic",
+    "nari-ir",
 ]
 
 [workspace.dependencies]
