@@ -39,7 +39,7 @@ impl App {
 
         let logo = Icon::build(&std::fs::read("assets/logo.svg")?)?;
 
-        let font_body = canvas.create_font(std::fs::read("assets/Inter/Inter-Regular.ttf")?);
+        let font_body = canvas.create_font(std::fs::read("assets/Lato/Lato-Regular.ttf")?);
         let font_body_regular = canvas.create_font_scaled(
             font_body,
             canvas.scale(16.0).round() as u32,

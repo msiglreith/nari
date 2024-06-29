@@ -1,4 +1,3 @@
-use nari_vello::kurbo::CuspType;
 use parley::layout::{Cursor, Layout};
 use parley::style::Brush;
 use std::ops::Range;

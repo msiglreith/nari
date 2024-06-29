@@ -1,11 +1,11 @@
 use nari_platform::{
-    ControlFlow, Event, Extent, Key, KeyCode, KeyState, Modifiers, MouseButtons, Platform,
+    ControlFlow, Cursor, Event, Extent, Key, KeyCode, KeyState, Modifiers, MouseButtons, Platform,
     SurfaceArea,
 };
 use nari_vello::{
     kurbo::{Affine, Point, Rect, RoundedRect, Stroke},
     peniko::{Brush, Color, Fill},
-    typo::{Cursor, TextRun},
+    typo::{Cursor as SelectionCursor, TextRun},
     Align, Canvas, Scene,
 };
 use parley::layout::cursor::Movement;
@@ -21,7 +21,7 @@ struct TextCursor {
     text: String,
     pen: Point,
     text_run: TextRun,
-    cursor: Option<Cursor>,
+    cursor: Option<SelectionCursor>,
 }
 
 impl TextCursor {
@@ -46,7 +46,7 @@ impl TextCursor {
             self.text_run = app
                 .canvas
                 .build_text_run(app.style.font_regular, &self.text);
-            self.cursor = Some(Cursor::from_position(
+            self.cursor = Some(SelectionCursor::from_position(
                 &self.text_run.layout,
                 cursor.insert_point + c.len_utf8(),
                 true,
@@ -456,6 +456,26 @@ async fn run() -> anyhow::Result<()> {
                 text_cursor2.on_mouse(&mut app, button, state, modifiers);
 
                 app.event_loop.surface.redraw();
+            }
+
+            Event::MouseMove { cursor } => {
+                if let Some((x, y)) = app.event_loop.mouse_position {
+                    let p = Point::new(x as f64, y as f64);
+
+                    *cursor = if let Some(hit_area) = Border::hittest(&app, p) {
+                        match hit_area {
+                            SurfaceArea::Bottom => Cursor::ResizeBottom,
+                            SurfaceArea::Top => Cursor::ResizeTop,
+                            SurfaceArea::Left => Cursor::ResizeLeft,
+                            SurfaceArea::Right => Cursor::ResizeRight,
+                            _ => Cursor::Default,
+                        }
+                    } else if let Some(_) = Caption::hittest(&app, p) {
+                        Cursor::Default
+                    } else {
+                        Cursor::Default
+                    };
+                }
             }
 
             Event::Char(c) => {

@@ -42,14 +42,14 @@ use windows_sys::{
                 SetCursor, SetWindowLongPtrW, ShowWindow, TranslateMessage, CREATESTRUCTW,
                 CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_USERDATA, HTBOTTOM, HTBOTTOMLEFT,
                 HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTCLOSE, HTLEFT, HTMAXBUTTON, HTMINBUTTON,
-                HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, IDC_ARROW, IDC_HAND, NCCALCSIZE_PARAMS,
-                SC_CLOSE, SC_MAXIMIZE, SC_MINIMIZE, SC_RESTORE, SW_MAXIMIZE, SW_SHOW,
-                WINDOWPLACEMENT, WM_CHAR, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN,
-                WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST,
-                WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_PAINT,
-                WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SIZE, WM_SYSCOMMAND, WNDCLASSEXW,
-                WS_CAPTION, WS_EX_ACCEPTFILES, WS_EX_APPWINDOW, WS_EX_WINDOWEDGE, WS_MAXIMIZEBOX,
-                WS_MINIMIZEBOX, WS_SIZEBOX, WS_SYSMENU,
+                HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, IDC_ARROW, IDC_HAND, IDC_IBEAM, IDC_SIZENS,
+                IDC_SIZEWE, NCCALCSIZE_PARAMS, SC_CLOSE, SC_MAXIMIZE, SC_MINIMIZE, SC_RESTORE,
+                SW_MAXIMIZE, SW_SHOW, WINDOWPLACEMENT, WM_CHAR, WM_DESTROY, WM_KEYDOWN, WM_KEYUP,
+                WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE,
+                WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE,
+                WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SIZE, WM_SYSCOMMAND,
+                WNDCLASSEXW, WS_CAPTION, WS_EX_ACCEPTFILES, WS_EX_APPWINDOW, WS_EX_WINDOWEDGE,
+                WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_SIZEBOX, WS_SYSMENU,
             },
         },
     },
@@ -299,7 +299,8 @@ unsafe extern "system" fn window_proc(
 
         WM_NCMOUSEMOVE => {
             match wparam as u32 {
-                HTCAPTION | HTMINBUTTON | HTMAXBUTTON | HTCLOSE => {
+                HTCAPTION | HTMINBUTTON | HTMAXBUTTON | HTCLOSE | HTBOTTOM | HTLEFT | HTRIGHT
+                | HTTOP | HTBOTTOMLEFT | HTBOTTOMRIGHT | HTTOPLEFT | HTTOPRIGHT => {
                     // Track to get `WM_NCMOUSELEAVE` events
                     TrackMouseEvent(&mut TRACKMOUSEEVENT {
                         cbSize: mem::size_of::<TRACKMOUSEEVENT>() as u32,
@@ -562,6 +563,12 @@ impl UserData {
 pub enum Cursor {
     Default,
     Hand,
+    Text,
+
+    ResizeLeft,
+    ResizeRight,
+    ResizeTop,
+    ResizeBottom,
 }
 
 impl Cursor {
@@ -569,6 +576,9 @@ impl Cursor {
         match self {
             Self::Default => IDC_ARROW,
             Self::Hand => IDC_HAND,
+            Self::Text => IDC_IBEAM,
+            Self::ResizeLeft | Self::ResizeRight => IDC_SIZEWE,
+            Self::ResizeTop | Self::ResizeBottom => IDC_SIZENS,
         }
     }
 }

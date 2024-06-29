@@ -2,5 +2,3 @@
 
 - Register-based virtual machine, doesn't require explicit stack semantics (pop/push). Operation encoding direct register access, but a bit more complex
 Bytecode example
-![image.png](image 1.png)
-
