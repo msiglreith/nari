@@ -171,37 +171,40 @@ impl TextCursor {
 struct Border;
 impl Border {
     const MARGIN: f64 = 5.0;
+
     fn hittest(app: &App, p: Point) -> Option<SurfaceArea> {
         if app.event_loop.surface.is_maximized() {
             return None;
         }
 
+        let margin = app.canvas.scale(Self::MARGIN);
+
         let Extent { width, height } = app.event_loop.surface.extent();
 
-        if p.x <= Self::MARGIN {
-            return if p.y <= Self::MARGIN {
+        if p.x <= margin {
+            return if p.y <= margin {
                 Some(SurfaceArea::TopLeft)
-            } else if p.y >= height - Self::MARGIN {
+            } else if p.y >= height - margin {
                 Some(SurfaceArea::BottomLeft)
             } else {
                 Some(SurfaceArea::Left)
             };
         }
 
-        if p.x >= width - Self::MARGIN {
-            return if p.y <= Self::MARGIN {
+        if p.x >= width - margin {
+            return if p.y <= margin {
                 Some(SurfaceArea::TopRight)
-            } else if p.y >= height - Self::MARGIN {
+            } else if p.y >= height - margin {
                 Some(SurfaceArea::BottomRight)
             } else {
                 Some(SurfaceArea::Right)
             };
         }
 
-        if p.y <= Self::MARGIN {
+        if p.y <= margin {
             return Some(SurfaceArea::Top);
         }
-        if p.y >= height - Self::MARGIN {
+        if p.y >= height - margin {
             return Some(SurfaceArea::Bottom);
         }
 
@@ -468,6 +471,10 @@ async fn run() -> anyhow::Result<()> {
                             SurfaceArea::Top => Cursor::ResizeTop,
                             SurfaceArea::Left => Cursor::ResizeLeft,
                             SurfaceArea::Right => Cursor::ResizeRight,
+                            SurfaceArea::BottomLeft => Cursor::ResizeBottomLeft,
+                            SurfaceArea::BottomRight => Cursor::ResizeBottomRight,
+                            SurfaceArea::TopLeft => Cursor::ResizeTopLeft,
+                            SurfaceArea::TopRight => Cursor::ResizeTopRight,
                             _ => Cursor::Default,
                         }
                     } else if let Some(_) = Caption::hittest(&app, p) {
