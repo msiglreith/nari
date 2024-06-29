@@ -1,10 +1,10 @@
 use core::num::NonZeroU32;
-use nari_platform::{ControlFlow, Event, Platform, SurfaceArea};
+use nari_platform::{ControlFlow, Event, Platform};
 fn main() {
     let platform = Platform::new();
-    let surface = &platform.surface;
-    let context = unsafe { softbuffer::Context::new(surface) }.unwrap();
-    let mut surface = unsafe { softbuffer::Surface::new(&context, surface) }.unwrap();
+    let surface = platform.surface;
+    let context = softbuffer::Context::new(surface).unwrap();
+    let mut surface = softbuffer::Surface::new(&context, surface).unwrap();
 
     platform.run(move |event_loop, event| {
         match event {

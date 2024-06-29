@@ -3,6 +3,7 @@ mod fxp;
 
 pub mod icon;
 pub mod typo;
+use parley::fontique::Attributes;
 pub use vello::*;
 
 use self::{
@@ -135,8 +136,13 @@ impl Canvas {
         self.engine.create_font(data)
     }
 
-    pub fn create_font_scaled(&mut self, font: Font, size: FontSize) -> FontScaled {
-        self.engine.create_font_scaled(font, size)
+    pub fn create_font_scaled(
+        &mut self,
+        font: Font,
+        size: FontSize,
+        attributes: Attributes,
+    ) -> FontScaled {
+        self.engine.create_font_scaled(font, size, attributes)
     }
 
     pub fn build_text_run<S: AsRef<str>>(&mut self, font: FontScaled, text: S) -> TextRun {
@@ -153,60 +159,33 @@ impl Canvas {
         brush: Brush,
     ) {
         let transform = affine * Affine::scale_non_uniform(1.0, -1.0);
-        let px = text_run.offset_x(align_x);
-        for cluster in &text_run.clusters {
-            for glyph in &cluster.glyphs {
-                let key = GlyphKey {
-                    id: glyph.id,
-                    offset: glyph.offset.fract(),
-                };
-                let path = self
-                    .glyph_cache
-                    .get(&(text_run.font.size, key))
-                    .expect("missing glyph entry");
-                let advance = px + glyph.offset.trunc().f64();
+        let px: f64 = text_run.offset_x(align_x);
 
-                sb.fill(
-                    Fill::NonZero,
-                    Affine::translate((advance as _, 0.0)) * transform,
-                    &brush,
-                    None,
-                    &path,
-                );
+        for line in text_run.layout.lines() {
+            for glyph_run in line.glyph_runs() {
+                let mut run_x = px as f32 + glyph_run.offset();
+                let run_y = glyph_run.baseline();
+
+                for glyph in glyph_run.glyphs() {
+                    let glyph_x = run_x + glyph.x;
+                    let glyph_y = run_y - glyph.y;
+                    run_x += glyph.advance;
+
+                    let key = GlyphKey { id: glyph.id as _ };
+                    let path = self
+                        .glyph_cache
+                        .get(&(text_run.font.size, key))
+                        .expect("missing glyph entry");
+
+                    sb.fill(
+                        Fill::NonZero,
+                        Affine::translate((glyph_x as _, glyph_y as _)) * transform,
+                        &brush,
+                        None,
+                        &path,
+                    );
+                }
             }
         }
-    }
-
-    pub fn glyph_extent<C: Into<char>>(&mut self, font: FontScaled, c: C) -> kurbo::Rect {
-        self.engine.glyph_extent(font, c.into())
-    }
-
-    pub fn glyph<C: Into<char>>(
-        &mut self,
-        sb: &mut Scene,
-        font: typo::FontScaled,
-        c: C,
-        affine: Affine,
-        brush: &Brush,
-    ) {
-        let glyph = self
-            .engine
-            .build_glyph(font, c.into(), &mut self.glyph_cache);
-        let key = typo::GlyphKey {
-            id: glyph.id,
-            offset: glyph.offset,
-        };
-        let path = self
-            .glyph_cache
-            .get(&(font.size, key))
-            .expect("missing glyph entry");
-
-        sb.fill(
-            Fill::NonZero,
-            affine * Affine::scale_non_uniform(1.0, -1.0),
-            brush,
-            None,
-            &path,
-        );
     }
 }

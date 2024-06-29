@@ -1,69 +1,95 @@
 use nari_platform::{
-    ControlFlow, Event, EventLoop, Extent, Key, KeyCode, KeyState, Modifiers, MouseButtons,
-    Platform, SurfaceArea,
+    ControlFlow, Event, Extent, Key, KeyCode, KeyState, Modifiers, MouseButtons, Platform,
+    SurfaceArea,
 };
 use nari_vello::{
-    icon::Icon,
     kurbo::{Affine, Point, Rect, RoundedRect, Stroke},
     peniko::{Brush, Color, Fill},
-    typo::{Caret, FontScaled},
+    typo::{Cursor, TextRun},
     Align, Canvas, Scene,
 };
-use unicode_segmentation::GraphemeCursor;
+use parley::layout::cursor::Movement;
+
+mod app;
+mod notebook;
+
+use app::App;
 
 // Pretty simple cursor, might not be ideal for more complex scripts
 // with grapheme clusters.
 struct TextCursor {
     text: String,
     pen: Point,
-    cursor_pos: usize,
-    focused: bool,
+    text_run: TextRun,
+    cursor: Option<Cursor>,
 }
 
 impl TextCursor {
-    fn on_char(&mut self, c: char) {
-        if !self.focused {
-            return;
-        }
+    fn new(app: &mut App, text: &str, pen: Point) -> Self {
+        let text_run = app.canvas.build_text_run(app.style.font_regular, text);
 
+        Self {
+            text: text.to_string(),
+            pen: app.canvas.scale_pt(pen),
+            text_run,
+            cursor: None,
+        }
+    }
+
+    fn on_char(&mut self, app: &mut App, c: char) {
         if c.is_control() {
             return;
         }
 
-        self.text.insert(self.cursor_pos, c);
-        self.cursor_pos += c.len_utf8();
+        if let Some(cursor) = self.cursor {
+            self.text.insert(cursor.insert_point, c);
+            self.text_run = app
+                .canvas
+                .build_text_run(app.style.font_regular, &self.text);
+            self.cursor = Some(Cursor::from_position(
+                &self.text_run.layout,
+                cursor.insert_point + c.len_utf8(),
+                true,
+            ));
+        }
     }
 
     fn on_key(&mut self, key: Key, state: KeyState, _modifiers: Modifiers) {
-        if !self.focused {
+        if self.cursor.is_none() {
             return;
         }
 
-        const BACKSPACE: char = '\x08';
+        // const BACKSPACE: char = '\x08';
 
         match (key, state) {
-            (Key::Char(BACKSPACE), KeyState::Down) => {
-                // grapheme based, could be more sophisticated
-                let mut cursor = GraphemeCursor::new(self.cursor_pos, self.text.len(), true);
-                if let Some(pos) = cursor.prev_boundary(&self.text, 0).unwrap() {
-                    let new_pos = pos;
-                    for _ in new_pos..=pos {
-                        self.text.remove(new_pos);
-                    }
-                    self.cursor_pos = new_pos;
-                }
-            }
+            // (Key::Char(BACKSPACE), KeyState::Down) => {
+            //     // grapheme based, could be more sophisticated
+            //     let prev = self
+            //         .cursor
+            //         .unwrap()
+            //         .movement(&self.text_run.layout, Movement::Prev);
+            //     let mut cursor = GraphemeCursor::new(self.cursor_pos, self.text.len(), true);
+            //     if let Some(pos) = cursor.prev_boundary(&self.text, 0).unwrap() {
+            //         let new_pos = pos;
+            //         for _ in new_pos..=pos {
+            //             self.text.remove(new_pos);
+            //         }
+            //         self.cursor_pos = new_pos;
+            //     }
+            // }
             (Key::Code(KeyCode::Left), KeyState::Down) => {
-                let mut cursor = GraphemeCursor::new(self.cursor_pos, self.text.len(), true);
-                if let Some(pos) = cursor.prev_boundary(&self.text, 0).unwrap() {
-                    self.cursor_pos = pos;
-                }
+                self.cursor = Some(
+                    self.cursor
+                        .unwrap()
+                        .movement(&self.text_run.layout, Movement::Prev),
+                );
             }
             (Key::Code(KeyCode::Right), KeyState::Down) => {
-                let mut cursor = GraphemeCursor::new(self.cursor_pos, self.text.len(), true);
-                if let Some(pos) = cursor.next_boundary(&self.text, 0).unwrap() {
-                    self.cursor_pos = pos;
-                }
+                self.cursor = Some(
+                    self.cursor
+                        .unwrap()
+                        .movement(&self.text_run.layout, Movement::Next),
+                );
             }
             _ => (),
         }
@@ -83,15 +109,10 @@ impl TextCursor {
                     .build_text_run(app.style.font_regular, &self.text);
                 if let Some((x, y)) = app.event_loop.mouse_position {
                     let p = Point::new(x as _, y as _) - self.pen.to_vec2();
-                    if let Some(Caret { cluster }) = text_run.hittest(p) {
-                        self.focused = true;
-                        self.cursor_pos = if cluster == text_run.clusters.len() {
-                            self.text.len()
-                        } else {
-                            text_run.clusters[cluster].byte_pos
-                        };
-                    } else {
-                        self.focused = false;
+                    self.cursor = text_run.hittest(p);
+                    if let Some(cursor) = self.cursor {
+                        cursor.path;
+                        cursor.is_trailing();
                     }
                 }
             }
@@ -108,7 +129,7 @@ impl TextCursor {
         let bounds = text_run.bounds().expand();
 
         // selection background
-        if self.focused {
+        if self.cursor.is_some() {
             sb.fill(
                 Fill::NonZero,
                 pen,
@@ -127,8 +148,10 @@ impl TextCursor {
         );
 
         // draw caret
-        if self.focused {
-            let advance = text_run.cluster_advance(self.cursor_pos);
+        if let Some(cursor) = self.cursor {
+            let advance = cursor.offset as f64;
+            let line = cursor.path.line(&self.text_run.layout).unwrap();
+            let metrics = line.metrics();
             sb.fill(
                 Fill::NonZero,
                 pen,
@@ -137,7 +160,8 @@ impl TextCursor {
                 &Rect {
                     x0: advance,
                     x1: advance + 1.0,
-                    ..bounds
+                    y0: (cursor.baseline - metrics.ascent) as _,
+                    y1: (cursor.baseline + metrics.descent) as _,
                 },
             );
         }
@@ -333,82 +357,18 @@ impl Caption {
     }
 }
 
-struct Style {
-    font_regular: FontScaled,
-
-    logo: Icon,
-
-    icon_chrome_minimize: Icon,
-    icon_chrome_maximize: Icon,
-    icon_chrome_restore: Icon,
-    icon_chrome_close: Icon,
-
-    color_caption: Color,
-    color_text: Color,
-    color_background: Color,
-    color_text_select: Color,
-    color_cursor: Color,
-}
-
-struct App {
-    canvas: Canvas,
-    event_loop: EventLoop,
-    style: Style,
-}
-
 async fn run() -> anyhow::Result<()> {
     let platform = Platform::new();
+    let mut app = App::new(&platform).await?;
 
-    let mut canvas = Canvas::new(platform.surface).await;
+    let mut text_cursor = TextCursor::new(&mut app, "hello world =>!", Point::new(10.0, 50.0));
 
-    let icon_chrome_close = Icon::build(&std::fs::read("assets/codicon/chrome-close.svg")?)?;
-    let icon_chrome_minimize = Icon::build(&std::fs::read("assets/codicon/chrome-minimize.svg")?)?;
-    let icon_chrome_maximize = Icon::build(&std::fs::read("assets/codicon/chrome-maximize.svg")?)?;
-    let icon_chrome_restore = Icon::build(&std::fs::read("assets/codicon/chrome-restore.svg")?)?;
-
-    let logo = Icon::build(&std::fs::read("assets/logo.svg")?)?;
-
-    let font_body = canvas.create_font(std::fs::read("assets/Inter/Inter-Regular.ttf")?);
-    let font_body_regular = canvas.create_font_scaled(font_body, canvas.scale(16.0).round() as u32);
-
-    let mut text_cursor = TextCursor {
-        pen: canvas.scale_pt(Point::new(10.0, 50.0)),
-        cursor_pos: 0,
-        text: "hello world! ".to_string(),
-        focused: false,
-    };
-
-    let mut text_cursor2 = TextCursor {
-        pen: canvas.scale_pt(Point::new(10.0, 70.0)),
-        cursor_pos: 0,
-        text: "test row 2".to_string(),
-        focused: false,
-    };
-
-    let mut app = App {
-        canvas,
-        event_loop: EventLoop {
-            surface: platform.surface,
-            mouse_position: None,
-            mouse_buttons: MouseButtons::empty(),
-        },
-        style: Style {
-            font_regular: font_body_regular,
-
-            logo,
-
-            icon_chrome_close,
-            icon_chrome_minimize,
-            icon_chrome_maximize,
-            icon_chrome_restore,
-
-            color_background: Color::rgb(1.0, 1.0, 1.0),
-            color_caption: Color::rgb(0.97, 0.97, 1.0),
-            color_text: Color::rgb(0.0, 0.0, 0.0),
-            color_text_select: Color::rgb(0.97, 0.97, 1.0),
-            color_cursor: Color::rgb(0.0, 0.0, 0.0),
-        },
-    };
+    let mut text_cursor2 = TextCursor::new(
+        &mut app,
+        "We will لققققاء في 09:35 في ال 🏖️
+    qweqwe",
+        Point::new(10.0, 70.0),
+    );
 
     let mut scene = Scene::default();
 
@@ -499,8 +459,8 @@ async fn run() -> anyhow::Result<()> {
             }
 
             Event::Char(c) => {
-                text_cursor.on_char(c);
-                text_cursor2.on_char(c);
+                text_cursor.on_char(&mut app, c);
+                text_cursor2.on_char(&mut app, c);
 
                 app.event_loop.surface.redraw();
             }

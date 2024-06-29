@@ -10,13 +10,12 @@ vello.workspace = true
 nari-platform.workspace = true
 bytemuck = { version = "1", features = ["derive"] }
 libc = "0.2"
-unicode-segmentation = "1.9"
-swash.workspace = true
 wgpu = "0.19"
 raw-window-handle.workspace = true
 usvg = "0.30"
 anyhow.workspace = true
 skrifa = "0.19"
+parley.workspace = true
 
 [dev-dependencies]
 pollster = "0.2"

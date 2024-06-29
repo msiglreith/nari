@@ -25,4 +25,4 @@ features = [
 
 [dev-dependencies]
 anyhow = "1"
-softbuffer = "0.3"
+softbuffer = "0.4"
