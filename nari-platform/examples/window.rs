@@ -2,6 +2,8 @@ use core::num::NonZeroU32;
 use nari_platform::{ControlFlow, Event, Platform};
 fn main() {
     let platform = Platform::new();
+    println!("{:?}", &platform.cpu);
+
     let surface = platform.surface;
     let context = softbuffer::Context::new(surface).unwrap();
     let mut surface = softbuffer::Surface::new(&context, surface).unwrap();

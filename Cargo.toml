@@ -9,6 +9,7 @@ members = [
     "nari-ochre",
     "nari-decor-basic",
     "nari-ir",
+    "nari-x64",
 ]
 
 [workspace.dependencies]

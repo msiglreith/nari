@@ -4,6 +4,8 @@ use raw_window_handle::{
     RawWindowHandle, Win32WindowHandle, WindowHandle, WindowsDisplayHandle,
 };
 
+pub mod cpu;
+
 use std::{
     cell::{Cell, RefCell},
     ffi::OsStr,
@@ -651,12 +653,15 @@ impl Surface {
     }
 }
 pub struct Platform {
+    pub cpu: cpu::DeviceProperties,
     pub surface: Surface,
     user_data: Rc<UserData>,
 }
 
 impl Platform {
     pub fn new() -> Self {
+        let cpu = cpu::DeviceProperties::query();
+
         let user_data = Rc::new(UserData {
             surface: Cell::new(Surface { hwnd: 0 }), // set during WM_NCCREATE
             cursor: Cell::new(Cursor::Default),
@@ -717,7 +722,11 @@ impl Platform {
 
             let surface = Surface { hwnd };
 
-            Platform { surface, user_data }
+            Platform {
+                cpu,
+                surface,
+                user_data,
+            }
         }
     }
 
