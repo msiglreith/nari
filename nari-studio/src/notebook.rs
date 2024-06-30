@@ -28,7 +28,7 @@ pub struct Selection {
 }
 
 impl Selection {
-    pub fn from_point<B: Brush>(layout: &Layout<B>, mut x: f32, y: f32) -> Self {
+    pub fn from_point<B: Brush>(layout: &Layout<B>, x: f32, y: f32) -> Self {
         let focus = Cursor::from_point(layout, x, y);
         dbg!(focus.path);
         Self {

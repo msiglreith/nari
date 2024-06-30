@@ -1,6 +1,6 @@
 use crate::{
     fxp::fxp6,
-    typo::{Font, FontProperties, FontScaled, FontSize, GlyphCache, GlyphId, GlyphKey, TextRun},
+    typo::{Font, FontProperties, FontScaled, FontSize, GlyphCache, GlyphKey, TextRun},
 };
 use parley::{
     fontique::{Attributes, FamilyId, QueryFamily, QueryStatus},
@@ -8,7 +8,7 @@ use parley::{
 };
 use skrifa::prelude::*;
 use skrifa::MetadataProvider;
-use vello::kurbo::{BezPath, Rect};
+use vello::kurbo::BezPath;
 
 pub struct Engine {
     font_ctx: FontContext,

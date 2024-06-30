@@ -491,8 +491,6 @@ async fn run() -> anyhow::Result<()> {
 
                 app.event_loop.surface.redraw();
             }
-
-            _ => (),
         }
         ControlFlow::Continue
     });
