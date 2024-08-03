@@ -12,7 +12,7 @@ pub use ash::vk::{
     AccelerationStructureKHR as AccelerationStructure, AccessFlags2KHR as Access, BlendFactor,
     BlendOp, BufferImageCopy, BufferUsageFlags, CommandBuffer,
     DispatchIndirectCommand as ComputeDispatch, DrawIndirectCommand as GraphicsDraw,
-    DrawMeshTasksIndirectCommandNV as GraphicsDrawMesh, Extent2D, Extent3D, Format, ImageLayout,
+    DrawMeshTasksIndirectCommandEXT as GraphicsDrawMesh, Extent2D, Extent3D, Format, ImageLayout,
     ImageType, ImageUsageFlags, ImageView, Offset2D, Offset3D, PipelineStageFlags2KHR as Stage,
     PrimitiveTopology, Rect2D, Sampler, Semaphore, ShaderModule as Shader,
 };

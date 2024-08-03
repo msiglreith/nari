@@ -1,10 +1,5 @@
-use ash::{
-    extensions::{ext, khr},
-    vk,
-};
-use raw_window_handle::{
-    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
-};
+use ash::{ext, khr, vk};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::ffi::CStr;
 
 pub struct Instance {
@@ -12,7 +7,7 @@ pub struct Instance {
     pub entry: ash::Entry,
     pub instance: ash::Instance,
     pub surface: Option<ash::vk::SurfaceKHR>,
-    pub surface_fn: khr::Surface,
+    pub surface_instance: khr::surface::Instance,
     pub physical_device: ash::vk::PhysicalDevice,
     pub device_id: usize,
     pub family_index: u32,
@@ -23,11 +18,11 @@ pub struct Instance {
 
 impl Instance {
     pub unsafe fn with_surface(
-        window: &(impl HasRawWindowHandle + HasRawDisplayHandle),
+        window: &(impl HasWindowHandle + HasDisplayHandle),
     ) -> anyhow::Result<Self> {
         Self::new(Some((
-            window.raw_window_handle(),
-            window.raw_display_handle(),
+            window.window_handle()?.as_raw(),
+            window.display_handle()?.as_raw(),
         )))
     }
 
@@ -52,9 +47,9 @@ impl Instance {
             extensions.extend(surface_extensions);
         }
 
-        let supports_debug_utils = supports_extension(ext::DebugUtils::name());
+        let supports_debug_utils = supports_extension(ext::debug_utils::NAME);
         if supports_debug_utils {
-            extensions.push(ext::DebugUtils::name().as_ptr());
+            extensions.push(ext::debug_utils::NAME.as_ptr());
         }
 
         let app_desc = vk::ApplicationInfo::default().api_version(vk::make_api_version(0, 1, 3, 0));
@@ -70,7 +65,7 @@ impl Instance {
         } else {
             None
         };
-        let surface_fn = khr::Surface::new(&entry, &instance);
+        let surface_instance = khr::surface::Instance::new(&entry, &instance);
 
         let (physical_device, device_id, family_index, _family_properties) = instance
             .enumerate_physical_devices()?
@@ -90,7 +85,7 @@ impl Instance {
                         }
 
                         if let Some(surface) = surface {
-                            let surface_support = surface_fn
+                            let surface_support = surface_instance
                                 .get_physical_device_surface_support(device, *i as _, surface)
                                 .unwrap();
                             if !surface_support {
@@ -111,7 +106,7 @@ impl Instance {
             entry,
             instance,
             surface,
-            surface_fn,
+            surface_instance,
             physical_device,
             device_id,
             family_index,

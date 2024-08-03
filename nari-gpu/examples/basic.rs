@@ -128,7 +128,7 @@ fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
-                Event::MouseMove => {
+                Event::MouseMove { .. } => {
                     event_loop.surface.redraw();
                 }
                 _ => (),

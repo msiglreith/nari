@@ -1,19 +1,25 @@
 use crate::{self as gpu, QueryId, SubmissionResult};
-use ash::{
-    extensions::{ext, khr, nv},
-    vk,
-    vk::Handle,
-};
+use ash::{ext, khr, vk};
 use gpu_allocator::vulkan::{Allocation, Allocator, AllocatorCreateDesc};
+use gpu_allocator::AllocationSizes;
 use std::collections::{hash_map::Entry, HashMap};
 use std::{
     ffi::CString,
     path::{Path, PathBuf},
 };
 
+pub struct ExtensionDebugUtil {
+    pub instance: ext::debug_utils::Instance,
+    pub device: ext::debug_utils::Device,
+}
+
+pub struct ExtensionMeshShader {
+    pub device: ext::mesh_shader::Device,
+}
+
 pub struct Extensions {
-    pub debug_utils: Option<ext::DebugUtils>,
-    pub mesh_shader: Option<nv::MeshShader>,
+    pub debug_utils: Option<ExtensionDebugUtil>,
+    pub mesh_shader: Option<ExtensionMeshShader>,
 }
 
 const POOL_TIMESTAMPS: u32 = 128;
@@ -91,13 +97,13 @@ pub struct Gpu {
 
 impl Gpu {
     pub unsafe fn new(instance: &gpu::Instance, spv_dir: &Path) -> anyhow::Result<Self> {
-        let supports_debug_utils = instance.supports_instance_extension(ext::DebugUtils::name());
-        let supports_mesh_shader = instance.supports_device_extension(nv::MeshShader::name());
+        let supports_debug_utils = instance.supports_instance_extension(ext::debug_utils::NAME);
+        let supports_mesh_shader = instance.supports_device_extension(ext::mesh_shader::NAME);
 
         let (device, queue) = {
-            let mut device_extensions = vec![khr::Swapchain::name().as_ptr()];
+            let mut device_extensions = vec![khr::swapchain::NAME.as_ptr()];
             if supports_mesh_shader {
-                device_extensions.push(nv::MeshShader::name().as_ptr());
+                device_extensions.push(ext::mesh_shader::NAME.as_ptr());
             }
 
             let features = vk::PhysicalDeviceFeatures::default()
@@ -122,7 +128,7 @@ impl Gpu {
                 .robust_image_access(true)
                 .dynamic_rendering(true)
                 .synchronization2(true);
-            let mut features_mesh_shader = vk::PhysicalDeviceMeshShaderFeaturesNV::default()
+            let mut features_mesh_shader = vk::PhysicalDeviceMeshShaderFeaturesEXT::default()
                 .task_shader(supports_mesh_shader)
                 .mesh_shader(supports_mesh_shader);
 
@@ -150,10 +156,13 @@ impl Gpu {
         };
 
         // extensions
-        let ext_debug_utils =
-            supports_debug_utils.then(|| ext::DebugUtils::new(&instance.entry, &instance.instance));
-        let ext_mesh_shader =
-            supports_mesh_shader.then(|| nv::MeshShader::new(&instance.instance, &device));
+        let ext_debug_utils = supports_debug_utils.then(|| ExtensionDebugUtil {
+            instance: ext::debug_utils::Instance::new(&instance.entry, &instance.instance),
+            device: ext::debug_utils::Device::new(&instance.instance, &device),
+        });
+        let ext_mesh_shader = supports_mesh_shader.then(|| ExtensionMeshShader {
+            device: ext::mesh_shader::Device::new(&instance.instance, &device),
+        });
 
         const BUFFER_COUNT: u32 = 64 * 1024;
         const SAMPLED_IMAGE_COUNT: u32 = 64 * 1024;
@@ -251,6 +260,7 @@ impl Gpu {
             physical_device: instance.physical_device,
             debug_settings: Default::default(),
             buffer_device_address: true,
+            allocation_sizes: AllocationSizes::default(),
         })?;
 
         let timeline = {
@@ -446,19 +456,13 @@ impl Gpu {
         self.pools[pool.id].shrine.images.push(image.image);
     }
 
-    unsafe fn name_object(
-        &self,
-        ty: vk::ObjectType,
-        handle: u64,
-        name: &str,
-    ) -> anyhow::Result<()> {
+    unsafe fn name_object<T: vk::Handle>(&self, object: T, name: &str) -> anyhow::Result<()> {
         if let Some(ext) = &self.ext.debug_utils {
             let name = CString::new(name)?;
             let info = vk::DebugUtilsObjectNameInfoEXT::default()
-                .object_type(ty)
-                .object_handle(handle)
+                .object_handle(object)
                 .object_name(&name);
-            ext.set_debug_utils_object_name(self.device.handle(), &info)?;
+            ext.device.set_debug_utils_object_name(&info)?;
         }
         Ok(())
     }
@@ -486,7 +490,7 @@ impl Gpu {
             gpu::Buffer { buffer, allocation }
         };
 
-        self.name_object(vk::ObjectType::BUFFER, buffer.buffer.as_raw(), name)?;
+        self.name_object(buffer.buffer, name)?;
 
         Ok(buffer)
     }
@@ -515,7 +519,7 @@ impl Gpu {
             gpu::Buffer { buffer, allocation }
         };
 
-        self.name_object(vk::ObjectType::BUFFER, buffer.buffer.as_raw(), name)?;
+        self.name_object(buffer.buffer, name)?;
 
         match initialization {
             gpu::BufferDownloadInit::Device {
@@ -566,7 +570,7 @@ impl Gpu {
             gpu::Buffer { buffer, allocation }
         };
 
-        self.name_object(vk::ObjectType::BUFFER, buffer.buffer.as_raw(), name)?;
+        self.name_object(buffer.buffer, name)?;
 
         match initialization {
             gpu::BufferGpuInit::Host { pool, data } => {
@@ -640,7 +644,7 @@ impl Gpu {
             let allocation = self.allocator.allocate(&alloc_desc)?;
             self.bind_image_memory(image, allocation.memory(), allocation.offset())?;
 
-            self.name_object(vk::ObjectType::IMAGE, image.as_raw(), name)?;
+            self.name_object(image, name)?;
 
             gpu::Image {
                 image,
@@ -781,7 +785,7 @@ impl Gpu {
             .unwrap();
         let pipeline = pipelines[0];
 
-        self.name_object(vk::ObjectType::PIPELINE, pipeline.as_raw(), name)?;
+        self.name_object(pipeline, name)?;
 
         Ok(gpu::Pipeline {
             pipeline,
@@ -918,7 +922,7 @@ impl Gpu {
             .unwrap();
         let pipeline = pipelines[0];
 
-        self.name_object(vk::ObjectType::PIPELINE, pipeline.as_raw(), name)?;
+        self.name_object(pipeline, name)?;
 
         Ok(gpu::Pipeline {
             pipeline,
@@ -1189,11 +1193,17 @@ impl Gpu {
             kernel.pipeline,
         );
         for draw in draws {
-            self.ext.mesh_shader.as_ref().unwrap().cmd_draw_mesh_tasks(
-                pool.cmd_buffer,
-                draw.task_count,
-                draw.first_task,
-            );
+            self.ext
+                .mesh_shader
+                .as_ref()
+                .unwrap()
+                .device
+                .cmd_draw_mesh_tasks(
+                    pool.cmd_buffer,
+                    draw.group_count_x,
+                    draw.group_count_y,
+                    draw.group_count_z,
+                );
         }
     }
 

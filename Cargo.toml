@@ -9,7 +9,7 @@ members = [
     "nari-ochre",
     "nari-decor-basic",
     "nari-ir",
-    "nari-x64",
+    "nari-x64", "nari-gpu-d3d12",
 ]
 
 [workspace.dependencies]
@@ -22,7 +22,7 @@ nari-decor-basic = { path = "nari-decor-basic" }
 superluminal-perf = "0.2"
 vello = { git = "https://github.com/msiglreith/vello.git", branch = "nari_v3" }
 parley = { path = "../parley/parley" }
-raw-window-handle = "0.6"
+raw-window-handle = { version = "0.6.2", features = ["std"] }
 anyhow = "1"
 
 [profile.dev.package."*"]
